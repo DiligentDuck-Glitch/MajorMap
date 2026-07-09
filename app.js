@@ -1066,12 +1066,16 @@ function computeLayout() {
   COURSES.filter((c2) => state.completed.has(c2.id)).forEach((c2) => {
     const meta = state.completedMeta[c2.id] || {};
     const parsed = parseTermName(meta.term);
-    const key = parsed ? `p${parsed.y}-${parsed.season}` : "p-none";
+    // A study-plan scan knows completion but not the semester in which the
+    // course was taken. Keep those courses in their official map positions
+    // below instead of making one enormous, un-routable "past" column.
+    if (!parsed) return;
+    const key = `p${parsed.y}-${parsed.season}`;
     if (!pastMap.has(key)) {
       pastMap.set(key, {
-        label: parsed ? termLabelOf(parsed.season, parsed.y) : (meta.term || t("pastNoTerm")),
-        sort: parsed ? parsed.y * 10 + parsed.season : 1e9,
-        summer: parsed ? parsed.season === 2 : false,
+        label: termLabelOf(parsed.season, parsed.y),
+        sort: parsed.y * 10 + parsed.season,
+        summer: parsed.season === 2,
         parsed,
         courses: []
       });
@@ -1086,7 +1090,10 @@ function computeLayout() {
   // ---- canonical mode: untouched default plan ----
   if (!state.futureSems && past.length === 0 && !Object.keys(state.placements).length) {
     const columns = TERM_COLUMNS.map((col, i) => {
-      const courses = remaining.filter((c2) => c2.term === i);
+      // With no dated transcript terms (the study-plan case), completed cards
+      // remain in their official term beside future cards. This preserves the
+      // flowchart geometry and prevents a single tall completed-course column.
+      const courses = COURSES.filter((c2) => c2.term === i);
       return {
         id: `f${i + 1}`, kind: "regular", canonicalIndex: i, season: i % 2,
         title: col[lang], future: true, courses,
@@ -1095,7 +1102,8 @@ function computeLayout() {
     });
     const compacted = optimizeTermAssignments(columns, {
       creditLimit: (column) => WARN_CAP[column.kind === "summer" ? "summer" : "regular"],
-      maxAdvance: 2
+      maxAdvance: 2,
+      lockedIds: state.completed
     });
     return { columns: optimizeColumnOrder(compacted), canonical: true };
   }
