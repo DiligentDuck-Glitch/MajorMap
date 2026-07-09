@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MajorMap | مخطط تخصص الحاسوب</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@300;400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header" id="top">
+    <a class="brand" href="#top" aria-label="MajorMap">
+      <img class="logo-light" src="assets/logo-light.png" alt="MajorMap">
+      <img class="logo-dark" src="assets/logo-dark.png" alt="MajorMap">
+    </a>
+    <nav class="main-nav" aria-label="nav">
+      <a href="#planner" data-i18n="navMap">الخريطة</a>
+      <a href="#schedule" data-i18n="navSchedule">الجدول الأسبوعي</a>
+    </nav>
+    <div class="header-actions">
+      <div class="header-progress" title="progress">
+        <span class="header-progress-dot"></span>
+        <span id="header-progress-text">0 / 134</span>
+      </div>
+      <button type="button" class="icon-toggle" id="lang-toggle" aria-label="language">EN</button>
+      <button type="button" class="icon-toggle" id="theme-toggle" aria-label="theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 7a5 5 0 100 10 5 5 0 000-10zm0-5v2m0 18v2M4.2 4.2l1.4 1.4m12.8 12.8 1.4 1.4M2 12h2m16 0h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+      </button>
+      <div class="nav-button is-unavailable" aria-disabled="true">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M14 3v2h3.59l-9.3 9.29 1.42 1.42L19 6.41V10h2V3h-7zM5 5h5V3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-5h-2v5H5V5z"/></svg>
+        <span data-i18n="openBanner">فتح بانر</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-shell" id="planner">
+    <aside class="sidebar" id="transcript" aria-label="transcript">
+      <div class="side-block">
+        <div class="side-head">
+          <p class="eyebrow" data-i18n="transcriptEyebrow">قراءة السجل الأكاديمي</p>
+          <h2 data-i18n="transcriptTitle">المقررات المجتازة</h2>
+        </div>
+
+        <p class="doc-label" data-i18n="docModeLabel">اختر نوع الصورة قبل الرفع</p>
+        <div class="doc-choice" id="doc-choice" role="group">
+          <button type="button" class="doc-opt is-active" data-mode="plan" data-i18n="docPlan">الخطة الدراسية</button>
+          <button type="button" class="doc-opt" data-mode="transcript" data-i18n="docTranscript">السجل الدراسي</button>
+        </div>
+
+        <label class="upload-zone" for="transcript-file">
+          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M19 13v6H5v-6H3v6c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-6h-2zM12 2 6.46 7.46l1.42 1.41L11 5.75V16h2V5.75l3.13 3.12 1.41-1.41L12 2z"/></svg>
+          <span data-i18n="uploadPrompt">ارفع صورة الخطة الدراسية</span>
+          <strong data-i18n="uploadHint">من نظام المرشد الإلكتروني (صفحة ورقة التخصص)</strong>
+          <input id="transcript-file" type="file" accept="image/*">
+        </label>
+
+        <img class="preview-image" id="transcript-preview" alt="preview" hidden>
+
+        <div class="scan-actions">
+          <button type="button" id="scan-button" data-i18n="scanBtn">قراءة الصورة</button>
+          <button type="button" class="ghost-button" id="sample-button" data-i18n="sampleBtn">تجربة عينة</button>
+          <button type="button" class="ghost-button danger" id="reset-button" data-i18n="resetBtn">مسح</button>
+        </div>
+
+        <p class="scan-status" id="scan-status" data-i18n="noUpload">لم يتم رفع الخطة الدراسية بعد.</p>
+        <div class="scan-stats" id="scan-stats" hidden></div>
+      </div>
+
+      <div class="side-block progress-block">
+        <div class="progress-ring" id="progress-ring" style="--pct:0">
+          <div class="progress-ring-inner">
+            <strong id="progress-label">0/134</strong>
+            <span data-i18n="creditsPassed">وحدة مجتازة</span>
+          </div>
+        </div>
+        <span id="progress-bar" hidden></span>
+      </div>
+
+      <div class="side-block">
+        <div class="side-head compact"><h3 data-i18n="legendTitle">دليل الألوان</h3></div>
+        <ul class="legend">
+          <li><span class="legend-dot is-complete"></span> <span data-i18n="legendComplete">مجتاز</span></li>
+          <li><span class="legend-dot is-available"></span> <span data-i18n="legendAvailable">متاح (استوفى المتطلب)</span></li>
+          <li><span class="legend-dot is-locked"></span> <span data-i18n="legendLocked">مقفل (متطلب ناقص)</span></li>
+          <li><span class="legend-dot is-planned"></span> <span data-i18n="legendPlanned">مخطط في الجدول</span></li>
+          <li><span class="legend-dot is-elective"></span> <span data-i18n="legendElective">مقرر اختياري</span></li>
+        </ul>
+      </div>
+
+      <div class="side-block">
+        <div class="side-head compact"><h3 data-i18n="recordTitle">سجل المقررات</h3></div>
+        <div class="completed-list" id="completed-list" aria-live="polite"></div>
+      </div>
+    </aside>
+
+    <section class="flow-main" aria-label="flowchart">
+      <div class="flow-toolbar">
+        <div>
+          <p class="eyebrow" data-i18n="mapEyebrow">قسم الحاسوب — بكالوريوس معلم حاسوب</p>
+          <h1 data-i18n="mapTitle">خريطة التخصص</h1>
+        </div>
+        <div class="toolbar-controls">
+          <div class="control">
+            <label for="term-select" data-i18n="nextTerm">الفصل القادم</label>
+            <select id="term-select">
+              <option value="202610">الفصل الأول 2026-2027</option>
+              <option value="202530">الفصل الصيفي 2025-2026</option>
+              <option value="202520">الفصل الثاني 2025-2026</option>
+              <option value="202510">الفصل الأول 2025-2026</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <p class="planner-notice" id="planner-notice" role="status" aria-live="polite"></p>
+
+      <div class="flowchart-wrap">
+        <svg class="flow-arrows" id="flow-arrows" aria-hidden="true"></svg>
+        <div class="flowchart" id="flowchart" aria-label="map"></div>
+      </div>
+    </section>
+  </main>
+
+  <section class="schedule-section" id="schedule" aria-label="schedule">
+    <div class="schedule-heading">
+      <div>
+        <p class="eyebrow" data-i18n="scheduleEyebrow">الفصل القادم</p>
+        <h2 data-i18n="scheduleTitle">الجدول الأسبوعي</h2>
+      </div>
+      <div class="schedule-summary" id="schedule-summary" data-i18n="noSections">لم تتم إضافة شعب بعد.</div>
+    </div>
+    <div class="selected-sections" id="selected-sections"></div>
+    <div class="calendar-wrap">
+      <div class="calendar-grid" id="calendar-grid" aria-label="calendar"></div>
+    </div>
+  </section>
+
+  <div class="drawer-scrim" id="drawer-scrim" hidden></div>
+  <aside class="detail-drawer" id="detail-drawer" aria-label="details" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <p class="eyebrow" data-i18n="detailEyebrow">الشعب والتفاصيل</p>
+        <h2 data-i18n="detailTitle">تفاصيل المقرر</h2>
+      </div>
+      <button type="button" class="drawer-close" id="drawer-close" aria-label="close">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M18.3 5.71 12 12.01l-6.3-6.3-1.4 1.41 6.29 6.3-6.3 6.29 1.41 1.41 6.3-6.29 6.29 6.3 1.41-1.41-6.29-6.3 6.3-6.29z"/></svg>
+      </button>
+    </div>
+    <div class="drawer-body" id="course-detail"></div>
+  </aside>
+
+  <footer>
+    <img class="logo-light" src="assets/logo-light.png" alt="MajorMap">
+    <img class="logo-dark" src="assets/logo-dark.png" alt="MajorMap">
+    <span>مخطط غير رسمي لمساعدة الطلبة — بيانات المقررات والشعب من قسم الحاسوب وبانر PAAET.</span>
+    <a href="#top">▲</a>
+  </footer>
+</body>
+</html>
