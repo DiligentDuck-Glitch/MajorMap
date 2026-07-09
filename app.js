@@ -1285,7 +1285,7 @@ function renderFlowchart() {
   state.eligibilitySemesterId = activeSemesterId;
   elements.flowchart.style.setProperty("--term-count", cols.length + 1);
 
-  const colHtml = cols.map((col, i) => {
+  const renderedColumns = cols.map((col, i) => {
     const over = col.credits > WARN_CAP[col.kind === "summer" ? "summer" : "regular"];
     const warn = over
       ? `<div class="credit-warn"><svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M12 2 1 21h22L12 2zm1 14h-2v2h2v-2zm0-7h-2v5h2V9z"/></svg><span>${col.kind === "summer" ? t("creditWarn9") : t("creditWarn18")}</span></div>`
@@ -2140,7 +2140,31 @@ function showScanReview(parsed, mode) {
     const title = choice?.title || course.title;
     const detail = [formatCourseCode(course), record.grade, record.term].filter(Boolean).join(" · ");
     return `<label class="scan-review-row"><input type="checkbox" data-scan-record="${index}" checked><span><strong>${title}</strong><span>${detail}</span></span></label>`;
-  }).join("");
+  });
+
+  // Desktop treats these wrappers as transparent. On mobile, consecutive
+  // regular semesters are grouped under one left-side year rail.
+  const mobileGroups = [];
+  let pendingYear = null;
+  let mobileYear = 0;
+  renderedColumns.forEach((html, index) => {
+    const column = cols[index];
+    const regularFuture = column.future && column.kind === "regular";
+    if (!regularFuture) {
+      pendingYear = null;
+      mobileGroups.push({ items: [html], year: null });
+      return;
+    }
+    if (!pendingYear) {
+      pendingYear = { items: [], year: ++mobileYear };
+      mobileGroups.push(pendingYear);
+    }
+    pendingYear.items.push(html);
+    if (pendingYear.items.length === 2) pendingYear = null;
+  });
+  const colHtml = mobileGroups.map((group) => group.year
+    ? `<div class="mobile-year"><div class="mobile-year-label">${t("yearWord")} ${group.year}</div><div class="mobile-year-terms">${group.items.join("")}</div></div>`
+    : group.items.join("")).join("");
   elements.scanReview.innerHTML = `
     <h3>${t("reviewScan")} (${records.length} ${t("detectedCourses")})</h3>
     <p>${t("reviewScanHint")}</p>

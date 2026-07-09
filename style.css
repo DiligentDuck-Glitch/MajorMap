@@ -542,6 +542,8 @@ select {
   min-height: 640px;
   direction: ltr;
 }
+.mobile-year, .mobile-year-terms { display: contents; }
+.mobile-year-label { display: none; }
 
 /* flex so .term-courses always stretches to the column bottom — the whole
    empty area below the cards is a valid drop target */
@@ -1030,6 +1032,22 @@ footer img { width: 108px; }
   .flowchart-wrap { overflow: hidden; padding: 10px 8px; }
   .flow-arrows { inset: 10px 8px; }
   .flowchart { grid-template-columns: 1fr; gap: 18px; min-height: 0; }
+  .mobile-year { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: stretch; }
+  .mobile-year-label {
+    display: grid;
+    place-items: center;
+    padding: 6px 4px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-md);
+    background: var(--lane);
+    color: var(--ink-soft);
+    font-family: var(--font-body);
+    font-size: 8px;
+    font-weight: 800;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+  .mobile-year-terms { display: grid; gap: 18px; min-width: 0; }
   .term-column { gap: 6px; padding: 7px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--lane); }
   .term-title { position: relative; gap: 1px; padding: 5px 6px; border-radius: 5px; box-shadow: none; }
   .term-title strong { font-size: 7.8px; }
@@ -1051,11 +1069,12 @@ footer img { width: 108px; }
   .selected-sections { grid-template-columns: repeat(auto-fit, minmax(144px, 1fr)); gap: 7px; margin-bottom: 10px; }
   .selected-card { gap: 4px; padding: 8px; border-inline-start-width: 2px; border-radius: 5px; font-size: 7.8px; }
   .selected-card button { min-height: 20px; padding: 0 7px; font-size: 7.4px; }
-  .calendar-grid { grid-template-columns: 46px repeat(7, minmax(72px, 1fr)); min-width: 540px; }
-  .calendar-head { min-height: 28px; font-size: 7.8px; }
-  .calendar-cell { min-height: 36px; padding: 4px; }
-  .time-cell { font-size: 7.2px; }
-  .class-block { padding: 4px; border-radius: 3px; font-size: 7.2px; }
+  .calendar-wrap { overflow: hidden; }
+  .calendar-grid { width: 100%; grid-template-columns: 28px repeat(7, minmax(0, 1fr)); min-width: 0; }
+  .calendar-head { min-height: 28px; padding: 2px; font-size: 6.4px; }
+  .calendar-cell { min-height: 36px; padding: 2px; }
+  .time-cell { font-size: 6px; }
+  .class-block { padding: 2px; border-radius: 3px; font-size: 6px; overflow-wrap: anywhere; }
   .detail-actions { grid-template-columns: 1fr; }
   .detail-drawer { width: 100vw; }
   .app-shell { padding-inline: 10px; }
