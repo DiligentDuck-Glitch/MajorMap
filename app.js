@@ -243,7 +243,13 @@ const I18N = {
     semesterEligibility: "Show courses available in this semester",
     courseEligible: "Available in this semester",
     courseIneligible: "Prerequisites are not yet complete",
-    offeringsUnavailable: "Course sections are temporarily unavailable."
+    offeringsUnavailable: "Course sections are temporarily unavailable.",
+    reviewScan: "Review detected courses",
+    reviewScanHint: "Confirm the courses before applying them to your plan.",
+    applyScan: "Apply selected courses",
+    cancelScan: "Cancel scan",
+    detectedCourses: "courses detected",
+    scanReady: "Review the detected courses before applying them."
   }
 };
 
@@ -254,7 +260,13 @@ Object.assign(I18N.ar, {
   semesterEligibility: "\u0625\u0638\u0647\u0627\u0631 \u0627\u0644\u0645\u0642\u0631\u0631\u0627\u062a \u0627\u0644\u0645\u062a\u0627\u062d\u0629 \u0641\u064a \u0647\u0630\u0627 \u0627\u0644\u0641\u0635\u0644",
   courseEligible: "\u0645\u062a\u0627\u062d \u0641\u064a \u0647\u0630\u0627 \u0627\u0644\u0641\u0635\u0644",
   courseIneligible: "\u0627\u0644\u0645\u062a\u0637\u0644\u0628\u0627\u062a \u0627\u0644\u0633\u0627\u0628\u0642\u0629 \u063a\u064a\u0631 \u0645\u0643\u062a\u0645\u0644\u0629",
-  offeringsUnavailable: "\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0634\u0639\u0628 \u063a\u064a\u0631 \u0645\u062a\u0627\u062d\u0629 \u0645\u0624\u0642\u062a\u064b\u0627."
+  offeringsUnavailable: "\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0634\u0639\u0628 \u063a\u064a\u0631 \u0645\u062a\u0627\u062d\u0629 \u0645\u0624\u0642\u062a\u064b\u0627.",
+  reviewScan: "\u0631\u0627\u062c\u0639 \u0627\u0644\u0645\u0642\u0631\u0631\u0627\u062a \u0627\u0644\u0645\u0643\u062a\u0634\u0641\u0629",
+  reviewScanHint: "\u0623\u0643\u062f \u0627\u0644\u0645\u0642\u0631\u0631\u0627\u062a \u0642\u0628\u0644 \u062a\u0637\u0628\u064a\u0642\u0647\u0627 \u0639\u0644\u0649 \u062e\u0637\u062a\u0643.",
+  applyScan: "\u062a\u0637\u0628\u064a\u0642 \u0627\u0644\u0645\u0642\u0631\u0631\u0627\u062a \u0627\u0644\u0645\u062d\u062f\u062f\u0629",
+  cancelScan: "\u0625\u0644\u063a\u0627\u0621 \u0627\u0644\u0645\u0633\u062d",
+  detectedCourses: "\u0645\u0642\u0631\u0631\u0627\u062a \u0645\u0643\u062a\u0634\u0641\u0629",
+  scanReady: "\u0631\u0627\u062c\u0639 \u0627\u0644\u0645\u0642\u0631\u0631\u0627\u062a \u0627\u0644\u0645\u0643\u062a\u0634\u0641\u0629 \u0642\u0628\u0644 \u062a\u0637\u0628\u064a\u0642\u0647\u0627."
 });
 
 // ---- Elective options (each carries its real Banner subject+number) ----
@@ -407,6 +419,7 @@ const state = {
   placements: {},            // courseId -> futureSem id (user-pinned)
   selectedCourseId: null,
   eligibilitySemesterId: null,
+  pendingScan: null,
   sections: [],
   bannerMessage: "",
   scanStats: null,
@@ -482,6 +495,7 @@ function cacheElements() {
   elements.resetButton = q("#reset-button");
   elements.scanStatus = q("#scan-status");
   elements.scanStats = q("#scan-stats");
+  elements.scanReview = q("#scan-review");
   elements.progressLabel = q("#progress-label");
   elements.progressBar = q("#progress-bar");
   elements.progressRing = q("#progress-ring");
@@ -534,6 +548,7 @@ function bindEvents() {
   elements.docChoice.querySelectorAll(".doc-opt").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.scanMode = btn.dataset.mode;
+      clearScanReview();
       applyScanMode();
       saveState();
     });
@@ -631,6 +646,7 @@ function resetPlanner() {
   state.placements = {};
   state.selectedCourseId = null;
   state.eligibilitySemesterId = null;
+  clearScanReview();
   state.scanStats = null;
   if (elements.fileInput) elements.fileInput.value = "";
   if (elements.preview) { elements.preview.hidden = true; elements.preview.removeAttribute("src"); }
@@ -1968,6 +1984,7 @@ function debounce(fn, wait) {
 function handleFileUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
+  clearScanReview();
   elements.preview.src = URL.createObjectURL(file);
   elements.preview.hidden = false;
   elements.scanStatus.textContent = (state.lang === "ar" ? "تم رفع " : "Uploaded ") + file.name;
@@ -1996,18 +2013,62 @@ async function scanPlanImage() {
       logger: (m) => { if (m.status === "recognizing text" && run === scanRun) elements.scanStatus.textContent = `${state.lang === "ar" ? "جاري القراءة" : "Reading"}... ${Math.round(m.progress * 100)}%`; }
     });
     if (run !== scanRun) return; // user pressed Clear while OCR was running
-    const parsed = state.scanMode === "transcript"
+    const detectedMode = detectScanMode(result.data.text);
+    const mode = detectedMode || state.scanMode;
+    const parsed = mode === "transcript"
       ? parseTranscript(result.data)
-      : parsePlan(result.data, color);
-    applyTranscriptRecords(parsed.records, parsed.stats);
+      : await parsePlanWithTableBlocks(result.data, ocr, color, run);
+    if (run !== scanRun) return;
+    showScanReview(parsed, mode);
     elements.scanStatus.textContent = state.lang === "ar"
       ? `تمت قراءة ${parsed.stats.read} من ${parsed.stats.expected} مقررًا.`
       : `Read ${parsed.stats.read} of ${parsed.stats.expected} courses.`;
+    elements.scanStatus.textContent = t("scanReady");
   } catch (err) {
     elements.scanStatus.textContent = (state.lang === "ar" ? "تعذرت القراءة: " : "Scan failed: ") + err;
   } finally {
     elements.scanButton.disabled = false;
   }
+}
+
+function clearScanReview() {
+  state.pendingScan = null;
+  if (!elements.scanReview) return;
+  elements.scanReview.hidden = true;
+  elements.scanReview.innerHTML = "";
+}
+
+function showScanReview(parsed, mode) {
+  const records = (parsed.records || []).filter((record) => courseById.has(record.courseId));
+  state.pendingScan = { records, stats: parsed.stats || null, mode };
+  if (!elements.scanReview) return;
+  const rows = records.map((record, index) => {
+    const course = courseById.get(record.courseId);
+    const choice = course.elective && record.electiveChoiceId
+      ? (getElectiveOptions(course.id).find((item) => item.id === record.electiveChoiceId) || {}) : null;
+    const title = choice?.title || course.title;
+    const detail = [formatCourseCode(course), record.grade, record.term].filter(Boolean).join(" · ");
+    return `<label class="scan-review-row"><input type="checkbox" data-scan-record="${index}" checked><span><strong>${title}</strong><span>${detail}</span></span></label>`;
+  }).join("");
+  elements.scanReview.innerHTML = `
+    <h3>${t("reviewScan")} (${records.length} ${t("detectedCourses")})</h3>
+    <p>${t("reviewScanHint")}</p>
+    <div class="scan-review-list">${rows || `<p>${t("none")}</p>`}</div>
+    <div class="scan-review-actions">
+      <button type="button" id="apply-scan-review">${t("applyScan")}</button>
+      <button type="button" class="ghost-button" id="cancel-scan-review">${t("cancelScan")}</button>
+    </div>`;
+  elements.scanReview.hidden = false;
+  elements.scanReview.querySelector("#apply-scan-review").addEventListener("click", () => {
+    const selected = [...elements.scanReview.querySelectorAll("[data-scan-record]:checked")]
+      .map((box) => records[Number(box.dataset.scanRecord)]).filter(Boolean);
+    applyTranscriptRecords(selected, parsed.stats || null);
+    clearScanReview();
+  });
+  elements.scanReview.querySelector("#cancel-scan-review").addEventListener("click", () => {
+    clearScanReview();
+    elements.scanStatus.textContent = t("noUpload");
+  });
 }
 
 function loadImage(file) {
@@ -2041,6 +2102,77 @@ function preprocessForOcr(img) {
   octx.filter = "grayscale(1) contrast(1.5)";
   octx.drawImage(color, 0, 0);
   return { ocr, color };
+}
+
+function detectScanMode(text) {
+  const normalized = normalizeArabic(text || "");
+  const transcript = normalizeArabic("\u0627\u0644\u0633\u062c\u0644 \u0627\u0644\u062f\u0631\u0627\u0633\u064a");
+  return normalized.includes(transcript) ? "transcript" : "";
+}
+
+// Find wide burgundy table headers, then OCR each full table independently.
+// This works for uncropped, long mobile screenshots because each table gets a
+// clean, high-resolution OCR pass instead of competing with the whole page.
+function findTableBlocks(canvas) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const { width, height } = canvas;
+  const pixels = ctx.getImageData(0, 0, width, height).data;
+  const bands = [];
+  let start = -1;
+  for (let y = 0; y < height; y += 2) {
+    let red = 0;
+    for (let x = Math.floor(width * .04); x < Math.floor(width * .96); x += 2) {
+      const i = (y * width + x) * 4;
+      const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+      if (r > 115 && r > g * 1.55 && r > b * 1.55 && g < 125) red++;
+    }
+    const wideRed = red > width * .075;
+    if (wideRed && start < 0) start = y;
+    if (!wideRed && start >= 0) {
+      if (y - start >= 4) bands.push({ top: start, bottom: y });
+      start = -1;
+    }
+  }
+  if (start >= 0) bands.push({ top: start, bottom: height });
+  return bands.map((band, index) => ({
+    top: Math.max(0, band.top - 22),
+    bottom: index + 1 < bands.length ? Math.max(band.bottom + 30, bands[index + 1].top - 22) : height
+  })).filter((block) => block.bottom - block.top >= 80).slice(0, 10);
+}
+
+function cropCanvas(canvas, top, bottom) {
+  const crop = document.createElement("canvas");
+  crop.width = canvas.width;
+  crop.height = Math.max(1, bottom - top);
+  crop.getContext("2d").drawImage(canvas, 0, top, canvas.width, crop.height, 0, 0, canvas.width, crop.height);
+  return crop;
+}
+
+function mergeOcrData(fullData, blocks) {
+  const lines = [...(fullData.lines || [])];
+  const texts = [fullData.text || ""];
+  blocks.forEach(({ data, offset }) => {
+    texts.push(data.text || "");
+    (data.lines || []).forEach((line) => {
+      const box = line.bbox || {};
+      lines.push({ ...line, bbox: { ...box, y0: (box.y0 || 0) + offset, y1: (box.y1 || 0) + offset } });
+    });
+  });
+  return { text: texts.join("\n"), lines };
+}
+
+async function parsePlanWithTableBlocks(fullData, ocrCanvas, colorCanvas, run) {
+  const blocks = findTableBlocks(colorCanvas);
+  if (!blocks.length) return parsePlan(fullData, colorCanvas);
+  const scanned = [];
+  for (let index = 0; index < blocks.length; index++) {
+    if (run !== scanRun) return { records: [], stats: { read: 0, expected: COURSES.length, passed: 0, unread: [] } };
+    elements.scanStatus.textContent = `${state.lang === "ar" ? "\u062c\u0627\u0631\u064a \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u062c\u062f\u0648\u0644" : "Reading table"} ${index + 1}/${blocks.length}`;
+    const block = blocks[index];
+    const result = await window.Tesseract.recognize(cropCanvas(ocrCanvas, block.top, block.bottom), "ara+eng");
+    scanned.push({ data: result.data, offset: block.top });
+  }
+  return parsePlan(mergeOcrData(fullData, scanned), colorCanvas);
 }
 
 // Normalize Arabic for fuzzy matching.
@@ -2141,9 +2273,42 @@ function matchElectiveInLine(lineNorm, taken, hasGrade) {
   return null;
 }
 
-// Detect the green check mark within/near a text line's bounding box.
-function hasGreenCheck(ctx, bbox, imgWidth) {
+// Completion icons are in the rightmost part of PAAET plan rows. Record their
+// vertical centres before OCR association so an OCR box does not need to cover
+// the icon itself.
+function findGreenCheckMarkers(ctx, imgWidth, imgHeight) {
   try {
+    const startX = Math.floor(imgWidth * .7);
+    const markerWidth = imgWidth - startX;
+    const pixels = ctx.getImageData(startX, 0, markerWidth, imgHeight).data;
+    const bands = [];
+    let active = null;
+    for (let y = 0; y < imgHeight; y++) {
+      let green = 0;
+      for (let x = 0; x < markerWidth; x++) {
+        const i = (y * markerWidth + x) * 4;
+        const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+        if (g > 70 && g > r * 1.25 && g > b * 1.2) green++;
+      }
+      if (green >= 3) {
+        if (active) active.bottom = y;
+        else active = { top: y, bottom: y };
+      } else if (active) {
+        bands.push(active); active = null;
+      }
+    }
+    if (active) bands.push(active);
+    return bands.filter((band) => band.bottom - band.top >= 2 && band.bottom - band.top <= 80)
+      .map((band) => (band.top + band.bottom) / 2);
+  } catch { return []; }
+}
+
+// Detect the green check mark within/near a text line's bounding box.
+function hasGreenCheck(ctx, bbox, imgWidth, markers = []) {
+  try {
+    const center = ((bbox.y0 || 0) + (bbox.y1 || 0)) / 2;
+    const tolerance = Math.max(18, ((bbox.y1 || 0) - (bbox.y0 || 0)) * 1.3);
+    if (markers.some((y) => Math.abs(y - center) <= tolerance)) return true;
     // Scan the whole row: the only green in a table row is the ✓ (pass) icon.
     const pad = 5;
     const x0 = Math.max(0, bbox.x0 - pad);
@@ -2168,6 +2333,7 @@ function parsePlan(data, img) {
   canvas.height = img.naturalHeight || img.height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(img, 0, 0);
+  const greenMarkers = findGreenCheckMarkers(ctx, canvas.width, canvas.height);
 
   const lines = (data.lines || []).map((ln) => ({
     raw: ln.text || "",
@@ -2216,7 +2382,7 @@ function parsePlan(data, img) {
     if (best && bestScore >= (grade ? 0.6 : 0.72)) hit = best;
     else if (grade && bestReq && dominates(reqScore, reqSecond)) hit = bestReq;
     if (hit) {
-      const passed = Boolean(grade) || hasGreenCheck(ctx, line.bbox, canvas.width);
+      const passed = Boolean(grade) || hasGreenCheck(ctx, line.bbox, canvas.width, greenMarkers);
       const prev = matched.get(hit);
       if (!prev || (!prev.passed && passed)) matched.set(hit, { passed, grade });
     }

@@ -251,6 +251,25 @@ footer img { height: 32px; }
 .scan-stats .stat-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; color: var(--ink-soft); }
 .scan-stats .stat-row strong { color: var(--ink); font-variant-numeric: tabular-nums; }
 .scan-stats .stat-unread { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line-strong); color: var(--danger); font-size: 12px; }
+.scan-review {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--primary);
+  border-radius: var(--r-md);
+  background: var(--primary-soft);
+}
+.scan-review h3 { font-family: var(--font-body); font-size: 14px; color: var(--primary-dark); }
+.scan-review p { color: var(--ink-soft); font-size: 12px; }
+.scan-review-list { display: grid; gap: 6px; max-height: 240px; overflow: auto; padding-inline-end: 2px; }
+.scan-review-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); cursor: pointer; }
+.scan-review-row input { margin-top: 3px; accent-color: var(--primary); }
+.scan-review-row strong { display: block; color: var(--ink); font-size: 12px; }
+.scan-review-row span { display: block; color: var(--muted); font-size: 11px; }
+.scan-review-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.scan-review-actions button { min-height: 38px; border-radius: var(--r-sm); border: 1px solid var(--primary-dark); background: var(--primary); color: #fff; font-weight: 800; }
+.scan-review-actions .ghost-button { color: var(--primary-dark); }
 
 /* ============ APP SHELL ============ */
 .app-shell {
