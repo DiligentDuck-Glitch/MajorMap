@@ -1000,6 +1000,14 @@ footer img { width: 108px; }
 }
 
 @media (max-width: 620px) {
+  /* Mobile-only compact view: render the two large planning surfaces at 30%
+     of their desktop scale without changing desktop/tablet layout.  Expanding
+     the layout width before zooming keeps the scaled surfaces fully visible. */
+  .flowchart-wrap,
+  .schedule-section {
+    zoom: .3;
+    width: calc(100% / .3);
+  }
   .site-header { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
   .brand img { height: 32px; }
   .header-progress { display: none; }
