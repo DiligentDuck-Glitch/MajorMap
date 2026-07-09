@@ -1019,45 +1019,43 @@ footer img { width: 108px; }
 }
 
 @media (max-width: 620px) {
-  /* Keep the page layout at full mobile width. Only the flowchart and weekly
-     grid use 30%-scale metrics; CSS zoom would incorrectly shrink their
-     parents and collapse the one-column mobile layout. */
+  /* Mobile gets a dedicated top-down map. The 60%-scale card metrics keep it
+     readable without squeezing the desktop left-to-right graph into a phone. */
   .site-header { flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
   .brand img { height: 32px; }
   .header-progress { display: none; }
   .main-nav { gap: 14px; font-size: 14px; }
   .flow-toolbar { flex-direction: column; align-items: stretch; }
   .toolbar-controls { justify-content: space-between; flex-wrap: wrap; }
-  .flowchart-wrap { padding: 5px; }
-  .flow-arrows { inset: 5px; }
-  .flow-arrows path { stroke-width: .9px !important; }
-  .flowchart { grid-template-columns: repeat(var(--term-count, 8), 53px); gap: 16px; min-height: 144px; }
-  .term-column { gap: 3px; }
-  .term-title { gap: 1px; padding: 3px; border-radius: 3px; box-shadow: none; }
-  .term-title strong { font-size: 3.9px; }
-  .term-title span { font-size: 3.3px; }
-  .term-courses { gap: 11px; min-height: 27px; }
-  .course-card { gap: 1px; min-height: 22px; padding: 2px 3px; border-width: .5px; border-radius: 3px; box-shadow: none; }
+  .flowchart-wrap { overflow: hidden; padding: 10px 8px; }
+  .flow-arrows { inset: 10px 8px; }
+  .flowchart { grid-template-columns: 1fr; gap: 18px; min-height: 0; }
+  .term-column { gap: 6px; padding: 7px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--lane); }
+  .term-title { position: relative; gap: 1px; padding: 5px 6px; border-radius: 5px; box-shadow: none; }
+  .term-title strong { font-size: 7.8px; }
+  .term-title span { font-size: 6.6px; }
+  .term-courses { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-height: 0; }
+  .course-card { gap: 2px; min-height: 43px; padding: 5px 6px; border-width: 1px; border-radius: 6px; box-shadow: none; }
   .course-card:hover { transform: none; box-shadow: none; }
-  .card-top { gap: 2px; }
-  .course-code { padding: 1px 3px; font-size: 3.3px; }
-  .course-credits { font-size: 3.3px; }
-  .course-card strong { font-size: 3.8px; line-height: 1.15; }
-  .course-group, .actual-term { padding: 1px 3px; font-size: 3.2px; }
-  .status-flag { inset-inline-start: 3px; top: 3px; width: 5px; height: 5px; }
-  .status-flag svg { width: 3px; height: 3px; }
-  .add-summer-btn { left: -15px; top: 1px; width: 12px; height: 12px; border-width: .5px; font-size: 6px; }
-  .add-term-column { gap: 2px; min-height: 60px; border-width: .5px; border-radius: 4px; font-size: 3.9px; }
-  .add-term-column .plus-circle { width: 13px; height: 13px; border-width: .5px; font-size: 8px; }
+  .card-top { gap: 4px; }
+  .course-code { padding: 2px 5px; font-size: 6.6px; }
+  .course-credits { font-size: 6.6px; }
+  .course-card strong { font-size: 7.5px; line-height: 1.2; }
+  .course-group, .actual-term { padding: 1px 5px; font-size: 6.3px; }
+  .status-flag { inset-inline-start: 6px; top: 6px; width: 11px; height: 11px; }
+  .status-flag svg { width: 7px; height: 7px; }
+  .add-summer-btn { left: auto; right: 8px; top: 8px; width: 23px; height: 23px; border-width: 1px; font-size: 12px; }
+  .add-term-column { gap: 5px; min-height: 120px; border-width: 1px; border-radius: 7px; font-size: 7.8px; }
+  .add-term-column .plus-circle { width: 26px; height: 26px; border-width: 1px; font-size: 16px; }
   .schedule-section { padding: 14px; margin-inline: 10px; }
-  .selected-sections { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 4px; margin-bottom: 6px; }
-  .selected-card { gap: 2px; padding: 4px; border-inline-start-width: 1px; border-radius: 3px; font-size: 3.9px; }
-  .selected-card button { min-height: 10px; padding: 0 4px; font-size: 3.7px; }
-  .calendar-grid { grid-template-columns: 23px repeat(7, minmax(36px, 1fr)); min-width: 270px; }
-  .calendar-head { min-height: 14px; font-size: 3.9px; }
-  .calendar-cell { min-height: 18px; padding: 2px; }
-  .time-cell { font-size: 3.6px; }
-  .class-block { padding: 2px; border-radius: 2px; font-size: 3.6px; }
+  .selected-sections { grid-template-columns: repeat(auto-fit, minmax(144px, 1fr)); gap: 7px; margin-bottom: 10px; }
+  .selected-card { gap: 4px; padding: 8px; border-inline-start-width: 2px; border-radius: 5px; font-size: 7.8px; }
+  .selected-card button { min-height: 20px; padding: 0 7px; font-size: 7.4px; }
+  .calendar-grid { grid-template-columns: 46px repeat(7, minmax(72px, 1fr)); min-width: 540px; }
+  .calendar-head { min-height: 28px; font-size: 7.8px; }
+  .calendar-cell { min-height: 36px; padding: 4px; }
+  .time-cell { font-size: 7.2px; }
+  .class-block { padding: 4px; border-radius: 3px; font-size: 7.2px; }
   .detail-actions { grid-template-columns: 1fr; }
   .detail-drawer { width: 100vw; }
   .app-shell { padding-inline: 10px; }

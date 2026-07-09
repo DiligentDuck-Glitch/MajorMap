@@ -1713,6 +1713,10 @@ function arrowColors() {
 
 function drawArrows() {
   if (!elements.arrows || !elements.flowchart) return;
+  if (window.matchMedia("(max-width: 620px)").matches) {
+    drawMobileArrows();
+    return;
+  }
   const fc = elements.flowchart;
   const w = fc.scrollWidth, h = fc.scrollHeight;
   elements.arrows.setAttribute("width", w);
@@ -1776,6 +1780,85 @@ function drawArrows() {
   });
   arrows.sort((a, b) => Number(a.lit) - Number(b.lit));
   elements.arrows.innerHTML = defs + arrows.map((a) => a.svg).join("");
+}
+
+// Mobile uses semester bands stacked top-to-bottom. This is intentionally a
+// separate router from the desktop left-to-right rails: all prerequisite paths
+// move downward, while the existing card/header/drag interactions stay intact.
+function drawMobileArrows() {
+  const fc = elements.flowchart;
+  const w = fc.scrollWidth, h = fc.scrollHeight;
+  elements.arrows.setAttribute("width", w);
+  elements.arrows.setAttribute("height", h);
+  elements.arrows.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  const fcRect = fc.getBoundingClientRect();
+  const selected = state.selectedCourseId;
+  const hasSel = Boolean(fc.querySelector(`[data-course-id="${selected}"]`));
+  const colors = arrowColors();
+  const defs = `<defs>
+    <marker id="arrow-prereq" markerWidth="7" markerHeight="7" refX="5.8" refY="3.5" orient="auto"><path d="M.4,.8 L6.5,3.5 L.4,6.2 Z" fill="${colors.prereq}"></path></marker>
+    <marker id="arrow-coreq" markerWidth="7" markerHeight="7" refX="5.8" refY="3.5" orient="auto"><path d="M.4,.8 L6.5,3.5 L.4,6.2 Z" fill="${colors.coreq}"></path></marker>
+  </defs>`;
+  const terms = [...fc.querySelectorAll(".term-column")];
+  const termIndex = new Map();
+  terms.forEach((term, index) => term.querySelectorAll(".course-card").forEach((card) => termIndex.set(card.dataset.courseId, index)));
+  const arrows = [];
+  const coreqSeen = new Set();
+  let longLane = 0;
+  const wrap = (d, coreq, related) => {
+    const lit = hasSel ? related : false;
+    const color = coreq ? colors.coreq : colors.prereq;
+    const opacity = hasSel ? (lit ? 1 : .08) : .78;
+    const stroke = hasSel && lit ? 2.2 : 1.5;
+    const marker = !hasSel || lit ? ` marker-end="url(#arrow-${coreq ? "coreq" : "prereq"})"` : "";
+    const dash = coreq ? ` stroke-dasharray="4 3"` : "";
+    return { lit, svg:
+      `<path d="${d}" fill="none" stroke="${colors.surface}" stroke-width="${stroke + 3}" stroke-linecap="round" stroke-linejoin="round"></path>` +
+      `<path d="${d}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${opacity}"${dash}${marker}></path>` };
+  };
+  const mobilePath = (sourceId, targetId, coreq) => {
+    const source = fc.querySelector(`[data-course-id="${sourceId}"]`);
+    const target = fc.querySelector(`[data-course-id="${targetId}"]`);
+    if (!source || !target) return null;
+    const sTerm = termIndex.get(sourceId), tTerm = termIndex.get(targetId);
+    if (sTerm === undefined || tTerm === undefined) return null;
+    if (!coreq && sTerm >= tTerm) return null;
+    const s = source.getBoundingClientRect(), targetRect = target.getBoundingClientRect();
+    const sx = s.left + s.width / 2 - fcRect.left, sy = s.bottom - fcRect.top;
+    const tx = targetRect.left + targetRect.width / 2 - fcRect.left, ty = targetRect.top - fcRect.top;
+    if (coreq && sTerm === tTerm) {
+      const fromLeft = s.left <= targetRect.left;
+      const x1 = (fromLeft ? s.right : s.left) - fcRect.left;
+      const x2 = (fromLeft ? targetRect.left : targetRect.right) - fcRect.left;
+      const y = (s.top + s.height / 2 - fcRect.top + targetRect.top + targetRect.height / 2 - fcRect.top) / 2;
+      return wrap(`M ${x1} ${y} L ${x2} ${y}`, true, sourceId === selected || targetId === selected);
+    }
+    if (ty <= sy) return null;
+    let d;
+    if (tTerm - sTerm === 1) {
+      const mid = (sy + ty) / 2;
+      d = `M ${sx} ${sy} L ${sx} ${mid} L ${tx} ${mid} L ${tx} ${ty}`;
+    } else {
+      const side = longLane++ % 2 ? 10 + (longLane % 3) * 8 : w - 10 - (longLane % 3) * 8;
+      d = `M ${sx} ${sy} L ${side} ${sy} L ${side} ${ty} L ${tx} ${ty}`;
+    }
+    return wrap(d, coreq, sourceId === selected || targetId === selected);
+  };
+  COURSES.forEach((target) => {
+    (target.prereqs || []).forEach((source) => {
+      const arrow = mobilePath(source, target.id, false);
+      if (arrow) arrows.push(arrow);
+    });
+    (target.coreqs || []).forEach((source) => {
+      const key = [source, target.id].sort().join("|");
+      if (coreqSeen.has(key)) return;
+      coreqSeen.add(key);
+      const arrow = mobilePath(source, target.id, true);
+      if (arrow) arrows.push(arrow);
+    });
+  });
+  arrows.sort((a, b) => Number(a.lit) - Number(b.lit));
+  elements.arrows.innerHTML = defs + arrows.map((arrow) => arrow.svg).join("");
 }
 
 // The router claims actual ports, vertical gutter lanes and horizontal rails.
