@@ -1316,13 +1316,37 @@ function renderFlowchart() {
         ${warn}
         <div class="term-courses" data-sem-id="${col.future ? col.id : ""}">${col.courses.map((c2) => renderCourseCard(c2, col, layout, activeSemesterId)).join("")}</div>
       </div>`;
-  }).join("");
+  });
 
   const addCol = `
     <button type="button" class="add-term-column" id="add-term-btn" title="${t("addTerm")}">
       <span class="plus-circle">+</span>
       <span>${t("addTerm")}</span>
     </button>`;
+
+  // Desktop treats these wrappers as transparent. On mobile, consecutive
+  // regular semesters are grouped under one left-side year rail.
+  const mobileGroups = [];
+  let pendingYear = null;
+  let mobileYear = 0;
+  renderedColumns.forEach((html, index) => {
+    const column = cols[index];
+    const regularFuture = column.future && column.kind === "regular";
+    if (!regularFuture) {
+      pendingYear = null;
+      mobileGroups.push({ items: [html], year: null });
+      return;
+    }
+    if (!pendingYear) {
+      pendingYear = { items: [], year: ++mobileYear };
+      mobileGroups.push(pendingYear);
+    }
+    pendingYear.items.push(html);
+    if (pendingYear.items.length === 2) pendingYear = null;
+  });
+  const colHtml = mobileGroups.map((group) => group.year
+    ? `<div class="mobile-year"><div class="mobile-year-label">${t("yearWord")} ${group.year}</div><div class="mobile-year-terms">${group.items.join("")}</div></div>`
+    : group.items.join("")).join("");
 
   elements.flowchart.innerHTML = colHtml + addCol;
 
@@ -2151,29 +2175,6 @@ function showScanReview(parsed, mode) {
     return `<label class="scan-review-row"><input type="checkbox" data-scan-record="${index}" checked><span><strong>${title}</strong><span>${detail}</span></span></label>`;
   });
 
-  // Desktop treats these wrappers as transparent. On mobile, consecutive
-  // regular semesters are grouped under one left-side year rail.
-  const mobileGroups = [];
-  let pendingYear = null;
-  let mobileYear = 0;
-  renderedColumns.forEach((html, index) => {
-    const column = cols[index];
-    const regularFuture = column.future && column.kind === "regular";
-    if (!regularFuture) {
-      pendingYear = null;
-      mobileGroups.push({ items: [html], year: null });
-      return;
-    }
-    if (!pendingYear) {
-      pendingYear = { items: [], year: ++mobileYear };
-      mobileGroups.push(pendingYear);
-    }
-    pendingYear.items.push(html);
-    if (pendingYear.items.length === 2) pendingYear = null;
-  });
-  const colHtml = mobileGroups.map((group) => group.year
-    ? `<div class="mobile-year"><div class="mobile-year-label">${t("yearWord")} ${group.year}</div><div class="mobile-year-terms">${group.items.join("")}</div></div>`
-    : group.items.join("")).join("");
   elements.scanReview.innerHTML = `
     <h3>${t("reviewScan")} (${records.length} ${t("detectedCourses")})</h3>
     <p>${t("reviewScanHint")}</p>
