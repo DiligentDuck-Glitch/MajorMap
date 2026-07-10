@@ -74,6 +74,8 @@ const I18N = {
   ar: {
     mapEyebrow: "قسم الحاسوب — بكالوريوس معلم حاسوب",
     mapTitle: "خريطة التخصص",
+    mapPrevious: "الفصول السابقة",
+    mapNext: "الفصول التالية",
     nextTerm: "الفصل القادم",
     summer: "فصل صيفي",
     navMap: "الخريطة",
@@ -102,6 +104,7 @@ const I18N = {
     recordEmpty: "ستظهر المقررات المجتازة هنا بعد قراءة الخطة.",
     scheduleEyebrow: "الفصل القادم",
     scheduleTitle: "الجدول الأسبوعي",
+    scheduleSwipe: "اسحب أفقيًا لعرض بقية أيام الأسبوع.",
     noSections: "لم تتم إضافة شعب بعد.",
     sectionsSummary: (n, c) => `${n} شعب، ${c} وحدات مخططة`,
     detailEyebrow: "الشعب والتفاصيل",
@@ -159,6 +162,8 @@ const I18N = {
   en: {
     mapEyebrow: "Computer Dept. — B.Ed. Computer Teacher",
     mapTitle: "Degree Flowchart",
+    mapPrevious: "Previous semesters",
+    mapNext: "Next semesters",
     nextTerm: "Next term",
     summer: "Summer term",
     navMap: "Flowchart",
@@ -187,6 +192,7 @@ const I18N = {
     recordEmpty: "Completed courses will appear here after scanning.",
     scheduleEyebrow: "Next term",
     scheduleTitle: "Weekly schedule",
+    scheduleSwipe: "Swipe sideways to view the full week.",
     noSections: "No sections added yet.",
     sectionsSummary: (n, c) => `${n} sections, ${c} planned credits`,
     detailEyebrow: "Sections & details",
@@ -511,6 +517,8 @@ function cacheElements() {
   elements.langToggle = q("#lang-toggle");
   elements.themeToggle = q("#theme-toggle");
   elements.docChoice = q("#doc-choice");
+  elements.mapScrollPrev = q("#map-scroll-prev");
+  elements.mapScrollNext = q("#map-scroll-next");
 }
 
 function applyScanMode() {
@@ -545,6 +553,8 @@ function bindEvents() {
   elements.drawerScrim.addEventListener("click", closeDetailDrawer);
   elements.langToggle.addEventListener("click", toggleLanguage);
   elements.themeToggle.addEventListener("click", toggleTheme);
+  elements.mapScrollPrev?.addEventListener("click", () => scrollDegreeMap(-524));
+  elements.mapScrollNext?.addEventListener("click", () => scrollDegreeMap(524));
   elements.docChoice.querySelectorAll(".doc-opt").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.scanMode = btn.dataset.mode;
@@ -554,6 +564,12 @@ function bindEvents() {
     });
   });
   document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeDetailDrawer(); });
+}
+
+function scrollDegreeMap(amount) {
+  const wrap = document.querySelector(".flowchart-wrap");
+  if (!wrap) return;
+  wrap.scrollBy({ left: amount, behavior: "smooth" });
 }
 
 // ---------- language & theme ----------
@@ -1466,8 +1482,17 @@ function renderCourseCard(course, col, layout, eligibilitySemesterId) {
     isSelected ? "is-selected" : ""
   ].filter(Boolean).join(" ");
   const title = electiveSel ? electiveSel.title : course.title;
+  const statusLabel = isComplete
+    ? t("tabComplete")
+    : isPlanned
+      ? t("tabPlanned")
+      : course.elective
+        ? t("tabElective")
+        : unlocked
+          ? t("tabAvailable")
+          : t("tabLocked");
   return `
-    <button class="${classes}" type="button" draggable="${draggable}" data-course-id="${course.id}" aria-pressed="${isSelected}" title="${eligibilityLabel}">
+    <button class="${classes}" type="button" draggable="${draggable}" data-course-id="${course.id}" aria-pressed="${isSelected}" aria-label="${formatCourseCode(course)} ${title} — ${statusLabel}" title="${eligibilityLabel}">
       <span class="status-flag" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="${semesterEligibility && !semesterEligibility.eligible ? "M7 7l10 10M17 7 7 17" : "M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"}"/></svg></span>
       <span class="card-top">
         <span class="course-code">${formatCourseCode(course)}</span>

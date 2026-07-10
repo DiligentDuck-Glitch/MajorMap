@@ -7,9 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@300;400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/png" href="assets/logo-light.png">
+  <link rel="stylesheet" href="style.css?v=20260710">
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=20260710" defer></script>
 </head>
 <body>
   <header class="site-header" id="top">
@@ -119,6 +120,11 @@
       </div>
       <p class="planner-notice" id="planner-notice" role="status" aria-live="polite"></p>
 
+      <div class="map-scroll-controls" aria-label="map navigation">
+        <button type="button" id="map-scroll-prev" data-i18n="mapPrevious">الفصول السابقة</button>
+        <button type="button" id="map-scroll-next" data-i18n="mapNext">الفصول التالية</button>
+      </div>
+
       <div class="flowchart-wrap">
         <svg class="flow-arrows" id="flow-arrows" aria-hidden="true"></svg>
         <div class="flowchart" id="flowchart" aria-label="map"></div>
@@ -135,6 +141,7 @@
       <div class="schedule-summary" id="schedule-summary" data-i18n="noSections">لم تتم إضافة شعب بعد.</div>
     </div>
     <div class="selected-sections" id="selected-sections"></div>
+    <p class="schedule-swipe-hint" data-i18n="scheduleSwipe">اسحب أفقيًا لعرض بقية أيام الأسبوع.</p>
     <div class="calendar-wrap">
       <div class="calendar-grid" id="calendar-grid" aria-label="calendar"></div>
     </div>
