@@ -1073,6 +1073,88 @@ function optimizeColumnOrder(columns) {
   return ordered;
 }
 
+function preferredCourseGroups(courses, preferred = 5, minimum = 3) {
+  if (!courses.length) return [];
+  if (courses.length <= preferred) return [[...courses]];
+  let groupCount = Math.ceil(courses.length / preferred);
+  while (groupCount > 1 && Math.floor(courses.length / groupCount) < minimum) groupCount--;
+  const base = Math.floor(courses.length / groupCount);
+  const extra = courses.length % groupCount;
+  const groups = [];
+  let offset = 0;
+  for (let index = 0; index < groupCount; index++) {
+    const size = base + (index < extra ? 1 : 0);
+    groups.push(courses.slice(offset, offset + size));
+    offset += size;
+  }
+  return groups;
+}
+
+// Smooth auto-generated future terms toward five courses, while avoiding
+// one- and two-course terms whenever prerequisite order and credit limits
+// permit it. Manual pins, summers and co-requisite groups are left untouched.
+function balanceFutureCourseCounts(columns, lockedIds, minimum = 3, preferred = 5) {
+  const result = columns.map((column) => ({ ...column, courses: [...column.courses] }));
+  let locations = new Map();
+  let allCourses = [];
+  const refresh = () => {
+    locations = new Map();
+    allCourses = result.flatMap((column, index) => column.courses.map((course) => {
+      locations.set(course.id, index);
+      return course;
+    }));
+  };
+  const creditsAt = (index) => result[index].courses.reduce((sum, course) => sum + course.credits, 0);
+  const canMove = (course, from, to) => {
+    if (from === to || lockedIds.has(course.id) || (course.coreqs || []).length) return false;
+    if (!result[from]?.future || !result[to]?.future || result[from].kind !== result[to].kind) return false;
+    if (result[to].courses.length >= preferred) return false;
+    if (creditsAt(to) + course.credits > AUTO_CAP[result[to].kind]) return false;
+    const prereqsReady = (course.prereqs || []).every((id) =>
+      state.completed.has(id) || (locations.has(id) && locations.get(id) < to));
+    const dependentsLater = allCourses.every((dependent) =>
+      !(dependent.prereqs || []).includes(course.id) || locations.get(dependent.id) > to);
+    return prereqsReady && dependentsLater;
+  };
+  const move = (course, from, to) => {
+    result[from].courses = result[from].courses.filter((item) => item.id !== course.id);
+    result[to].courses.push(course);
+    refresh();
+  };
+
+  refresh();
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (let index = result.length - 1; index >= 0; index--) {
+      if (!result[index].future || result[index].kind === "summer" || result[index].courses.length >= minimum) continue;
+
+      // Prefer eliminating a sparse auto term by moving its courses backward.
+      for (const course of [...result[index].courses]) {
+        for (let destination = index - 1; destination >= 0; destination--) {
+          if (!canMove(course, index, destination)) continue;
+          move(course, index, destination); changed = true; break;
+        }
+      }
+
+      // If prerequisite order prevents that, move safe courses forward from a
+      // fuller earlier term until this term reaches the minimum.
+      while (result[index].courses.length > 0 && result[index].courses.length < minimum) {
+        let borrowed = false;
+        for (let source = index - 1; source >= 0 && !borrowed; source--) {
+          if (result[source].courses.length <= minimum) continue;
+          for (const course of [...result[source].courses].reverse()) {
+            if (!canMove(course, source, index)) continue;
+            move(course, source, index); changed = borrowed = true; break;
+          }
+        }
+        if (!borrowed) break;
+      }
+    }
+    if (!changed) break;
+  }
+  return result.filter((column) => !(column.auto && column.courses.length === 0));
+}
+
 // Build the full column layout. Returns { columns, futureIds }.
 function computeLayout() {
   const lang = state.lang;
@@ -1100,9 +1182,8 @@ function computeLayout() {
     pastMap.get(key).courses.push(c2);
   });
   const datedPast = [...pastMap.values()].sort((a, b) => a.sort - b.sort);
-  const undatedPast = TERM_COLUMNS.map((_term, termIndex) =>
-    undatedCompleted.filter((course) => course.term === termIndex))
-    .filter((courses) => courses.length)
+  const undatedPast = preferredCourseGroups([...undatedCompleted].sort((a, b) =>
+    a.term - b.term || a.id.localeCompare(b.id)))
     .map((courses, groupIndex) => ({
       id: `undated-past-${groupIndex}`,
       label: `${t("pastNoTerm")} ${groupIndex + 1}`,
@@ -1186,7 +1267,7 @@ function computeLayout() {
     }
     if (unplaced.size) {
       // not enough room: grow the plan with another regular semester
-      sems.push({ id: newSemId(), kind: "regular" });
+      sems.push({ id: newSemId(), kind: "regular", auto: true });
       const ns = sems[sems.length - 1];
       bySem[ns.id] = []; credits[ns.id] = 0;
       if (!progress && guard > 150) break; // safety valve
@@ -1207,6 +1288,15 @@ function computeLayout() {
     credits[column.id] = column.courses.reduce((sum, course) => sum + course.credits, 0);
     const futureIndex = sems.findIndex((sem) => sem.id === column.id);
     column.courses.forEach((course) => { placedSem[course.id] = futureIndex; });
+  });
+
+  const balancedSchedule = balanceFutureCourseCounts(sems.map((sem) => ({
+    ...sem, future: true, courses: bySem[sem.id] || []
+  })), pinned);
+  sems.splice(0, sems.length, ...balancedSchedule.map(({ id, kind, auto }) => ({ id, kind, auto })));
+  balancedSchedule.forEach((column) => {
+    bySem[column.id] = column.courses;
+    credits[column.id] = column.courses.reduce((sum, course) => sum + course.credits, 0);
   });
 
   // ---- labels for future terms ----
@@ -1289,7 +1379,7 @@ function addTermAtEnd() {
   renderAll();
 }
 
-function removeEmptyTerm(futureSemId) {
+function removeFutureTerm(futureSemId) {
   if (!state.futureSems) return;
   const idx = state.futureSems.findIndex((s2) => s2.id === futureSemId);
   if (idx >= 0) {
@@ -1297,6 +1387,7 @@ function removeEmptyTerm(futureSemId) {
     Object.keys(state.placements).forEach((cid) => {
       if (state.placements[cid] === futureSemId) delete state.placements[cid];
     });
+    if (state.eligibilitySemesterId === futureSemId) state.eligibilitySemesterId = null;
     saveState();
     renderAll();
   }
@@ -1322,8 +1413,13 @@ function renderFlowchart() {
     const plusBtn = showSummerPlus
       ? `<button type="button" class="add-summer-btn" data-add-summer="${col.id}" title="${t("addSummer")}" aria-label="${t("addSummer")}">+</button>`
       : "";
-    const removeBtn = col.future && !col.courses.length && state.futureSems
-      ? `<button type="button" class="ghost-button term-remove" data-remove-term="${col.id}" title="${t("removeTerm")}">×</button>`
+    // User-added summer terms can always be removed. Their courses are
+    // unpinned and automatically returned to the remaining plan. Regular
+    // terms retain the safer empty-only removal rule.
+    const canRemove = col.future && state.futureSems &&
+      (col.kind === "summer" || !col.courses.length);
+    const removeBtn = canRemove
+      ? `<button type="button" class="ghost-button term-remove" data-remove-term="${col.id}" title="${t("removeTerm")}" aria-label="${t("removeTerm")}">×</button>`
       : "";
     return `
       <div class="term-column ${col.kind === "summer" ? "summer-column" : ""} ${col.future && col.id === activeSemesterId ? "is-eligibility-target" : ""}" data-col-id="${col.id}" data-future-sem-id="${col.future ? col.id : ""}">
@@ -1340,31 +1436,9 @@ function renderFlowchart() {
       <span>${t("addTerm")}</span>
     </button>`;
 
-  // Desktop treats these wrappers as transparent. On mobile, consecutive
-  // regular semesters are grouped under one left-side year rail.
-  const mobileGroups = [];
-  let pendingYear = null;
-  let mobileYear = 0;
-  renderedColumns.forEach((html, index) => {
-    const column = cols[index];
-    const regularFuture = column.future && column.kind === "regular";
-    if (!regularFuture) {
-      pendingYear = null;
-      mobileGroups.push({ items: [html], year: null });
-      return;
-    }
-    if (!pendingYear) {
-      pendingYear = { items: [], year: ++mobileYear };
-      mobileGroups.push(pendingYear);
-    }
-    pendingYear.items.push(html);
-    if (pendingYear.items.length === 2) pendingYear = null;
-  });
-  const colHtml = mobileGroups.map((group) => group.year
-    ? `<div class="mobile-year"><div class="mobile-year-label">${t("yearWord")} ${group.year}</div><div class="mobile-year-terms">${group.items.join("")}</div></div>`
-    : group.items.join("")).join("");
-
-  elements.flowchart.innerHTML = colHtml + addCol;
+  // On phones each existing semester title becomes its own vertical rail, so
+  // no separate year wrapper/header is needed.
+  elements.flowchart.innerHTML = renderedColumns.join("") + addCol;
 
   // interactions
   elements.flowchart.querySelectorAll(".course-card").forEach((btn) => {
@@ -1409,7 +1483,7 @@ function renderFlowchart() {
     btn.addEventListener("click", (ev) => { ev.stopPropagation(); addSummerBefore(btn.dataset.addSummer); });
   });
   elements.flowchart.querySelectorAll("[data-remove-term]").forEach((btn) => {
-    btn.addEventListener("click", (ev) => { ev.stopPropagation(); removeEmptyTerm(btn.dataset.removeTerm); });
+    btn.addEventListener("click", (ev) => { ev.stopPropagation(); removeFutureTerm(btn.dataset.removeTerm); });
   });
   const addBtn = elements.flowchart.querySelector("#add-term-btn");
   if (addBtn) addBtn.addEventListener("click", addTermAtEnd);
@@ -1862,8 +1936,8 @@ function drawMobileArrows() {
   const hasSel = Boolean(fc.querySelector(`[data-course-id="${selected}"]`));
   const colors = arrowColors();
   const defs = `<defs>
-    <marker id="arrow-prereq" markerWidth="7" markerHeight="7" refX="5.8" refY="3.5" orient="auto"><path d="M.4,.8 L6.5,3.5 L.4,6.2 Z" fill="${colors.prereq}"></path></marker>
-    <marker id="arrow-coreq" markerWidth="7" markerHeight="7" refX="5.8" refY="3.5" orient="auto"><path d="M.4,.8 L6.5,3.5 L.4,6.2 Z" fill="${colors.coreq}"></path></marker>
+    <marker id="arrow-prereq" markerWidth="9" markerHeight="9" refX="7.4" refY="4.5" orient="auto"><path d="M.5,1 L8.2,4.5 L.5,8 Z" fill="${colors.prereq}"></path></marker>
+    <marker id="arrow-coreq" markerWidth="9" markerHeight="9" refX="7.4" refY="4.5" orient="auto"><path d="M.5,1 L8.2,4.5 L.5,8 Z" fill="${colors.coreq}"></path></marker>
   </defs>`;
   const terms = [...fc.querySelectorAll(".term-column")];
   const termIndex = new Map();
@@ -1874,13 +1948,13 @@ function drawMobileArrows() {
   const wrap = (d, coreq, related) => {
     const lit = hasSel ? related : false;
     const color = coreq ? colors.coreq : colors.prereq;
-    const opacity = hasSel ? (lit ? 1 : .08) : .78;
-    const stroke = hasSel && lit ? 2.2 : 1.5;
+    const opacity = hasSel ? (lit ? 1 : .07) : .92;
+    const stroke = hasSel && lit ? 3.4 : 2.25;
     const marker = !hasSel || lit ? ` marker-end="url(#arrow-${coreq ? "coreq" : "prereq"})"` : "";
     const dash = coreq ? ` stroke-dasharray="4 3"` : "";
     return { lit, svg:
-      `<path d="${d}" fill="none" stroke="${colors.surface}" stroke-width="${stroke + 3}" stroke-linecap="round" stroke-linejoin="round"></path>` +
-      `<path d="${d}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${opacity}"${dash}${marker}></path>` };
+      `<path d="${d}" fill="none" stroke="${colors.surface}" stroke-width="${stroke + 4.5}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>` +
+      `<path d="${d}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${opacity}" vector-effect="non-scaling-stroke"${dash}${marker}></path>` };
   };
   const mobilePath = (sourceId, targetId, coreq) => {
     const source = fc.querySelector(`[data-course-id="${sourceId}"]`);
@@ -1905,7 +1979,7 @@ function drawMobileArrows() {
       const mid = (sy + ty) / 2;
       d = `M ${sx} ${sy} L ${sx} ${mid} L ${tx} ${mid} L ${tx} ${ty}`;
     } else {
-      const side = longLane++ % 2 ? 10 + (longLane % 3) * 8 : w - 10 - (longLane % 3) * 8;
+      const side = w - 7 - (longLane++ % 3) * 5;
       d = `M ${sx} ${sy} L ${side} ${sy} L ${side} ${ty} L ${tx} ${ty}`;
     }
     return wrap(d, coreq, sourceId === selected || targetId === selected);
@@ -1956,10 +2030,13 @@ function claimGutterX(geo, leftCol, rightCol, router) {
   const key = `${leftCol}:${rightCol}`;
   const used = router.gutters.get(key) || 0;
   router.gutters.set(key, used + 1);
-  const low = left.right + 8;
-  const high = right.left - 8;
+  const gap = Math.max(1, right.left - left.right);
+  const inset = Math.max(2, Math.min(8, gap * .25));
+  const low = left.right + inset;
+  const high = right.left - inset;
   const center = (left.right + right.left) / 2;
-  return Math.max(low, Math.min(high, center + laneOffset(used, 9)));
+  const spacing = Math.max(2, Math.min(9, Math.max(2, high - low) / 2));
+  return high <= low ? center : Math.max(low, Math.min(high, center + laneOffset(used, spacing)));
 }
 
 function corridorIsClear(geo, fromCol, toCol, y) {
@@ -1980,8 +2057,11 @@ function claimCorridorY(geo, fromCol, toCol, desiredY, router) {
       return y;
     }
   }
-  // Never escape the visible chart area just to force a route.
-  return null;
+  // Compact overview layouts may not have enough unique 12px rails. Keep the
+  // connector visible in a tight bottom routing band instead of dropping it.
+  const fallback = Math.max(geo.headerFloor, geo.routeBottom - (router.rails.length % 8) * 5);
+  router.rails.push({ from: fromCol, to: toCol, y: fallback });
+  return fallback;
 }
 
 // Orthogonal USF-style routing with rounded elbows; arrows travel through
@@ -2032,7 +2112,7 @@ function buildArrow(srcId, tgtId, fcRect, coreq, selected, hasSel, colors, geo, 
   const x2 = tt.left - fcRect.left;
   const y2 = claimPortY(target, "in", tt, fcRect, router);
 
-  if (x2 - x1 > 24) {
+  if (x2 - x1 > 4) {
     const r = 8;
     if (tCol - sCol <= 1) {
       // Adjacent columns: each connector claims its own lane in the shared gutter.
@@ -2154,19 +2234,17 @@ async function scanPlanImage() {
   elements.scanButton.disabled = true;
   const img = await loadImage(file);
   try {
-    // Screenshots of eadvisor pages have small text; Tesseract needs ~2x that.
-    // OCR reads an upscaled grayscale/high-contrast copy; the color copy (same
-    // scale, so bboxes align) is kept for the green-✓ pass detection.
-    const { ocr, color } = preprocessForOcr(img);
-    const result = await window.Tesseract.recognize(ocr, "ara+eng", {
-      logger: (m) => { if (m.status === "recognizing text" && run === scanRun) elements.scanStatus.textContent = `${state.lang === "ar" ? "جاري القراءة" : "Reading"}... ${Math.round(m.progress * 100)}%`; }
-    });
+    // Keep one full-resolution color canvas for table/check detection, but OCR
+    // it in overlapping strips. Mobile browsers are far more reliable when
+    // Tesseract never has to hold a second full-page canvas in memory.
+    const { color } = preprocessForOcr(img);
+    const data = await recognizeCanvasRegion(color, 0, color.height, run);
     if (run !== scanRun) return; // user pressed Clear while OCR was running
-    const detectedMode = detectScanMode(result.data.text);
+    const detectedMode = detectScanMode(data.text);
     const mode = detectedMode || state.scanMode;
     const parsed = mode === "transcript"
-      ? parseTranscript(result.data)
-      : await parsePlanWithTableBlocks(result.data, ocr, color, run);
+      ? parseTranscript(data)
+      : await parsePlanWithTableBlocks(data, color, run);
     if (run !== scanRun) return;
     showScanReview(parsed, mode);
     elements.scanStatus.textContent = state.lang === "ar"
@@ -2230,14 +2308,15 @@ function loadImage(file) {
   });
 }
 
-// Upscale narrow screenshots to ~1500px wide (never downscale; canvas area
-// capped for very tall السجل captures) and return two same-scale canvases:
-// a grayscale/contrast one for Tesseract + the color one for hasGreenCheck.
+// Upscale narrow screenshots while keeping the persistent canvas bounded on
+// phones. OCR canvases are created one strip at a time by recognizeCanvasRegion.
 function preprocessForOcr(img) {
   const w = img.naturalWidth || img.width;
   const h = img.naturalHeight || img.height;
-  let scale = Math.max(1, Math.min(3, 1500 / w));
-  const MAX_AREA = 40e6;
+  const mobile = window.matchMedia("(max-width: 620px)").matches;
+  const targetWidth = mobile ? 1800 : 1600;
+  let scale = Math.max(1, Math.min(3, targetWidth / w));
+  const MAX_AREA = mobile ? 24e6 : 40e6;
   if (w * scale * h * scale > MAX_AREA) scale = Math.max(1, Math.sqrt(MAX_AREA / (w * h)));
   const cw = Math.round(w * scale), ch = Math.round(h * scale);
   const color = document.createElement("canvas");
@@ -2246,12 +2325,55 @@ function preprocessForOcr(img) {
   cctx.imageSmoothingEnabled = true;
   cctx.imageSmoothingQuality = "high";
   cctx.drawImage(img, 0, 0, cw, ch);
+  return { color, scale };
+}
+
+function createOcrStrip(colorCanvas, top, bottom) {
   const ocr = document.createElement("canvas");
-  ocr.width = cw; ocr.height = ch;
+  ocr.width = colorCanvas.width;
+  ocr.height = Math.max(1, bottom - top);
   const octx = ocr.getContext("2d");
-  octx.filter = "grayscale(1) contrast(1.5)";
-  octx.drawImage(color, 0, 0);
-  return { ocr, color };
+  octx.imageSmoothingEnabled = true;
+  octx.imageSmoothingQuality = "high";
+  octx.filter = "grayscale(1) contrast(1.65)";
+  octx.drawImage(colorCanvas, 0, top, colorCanvas.width, ocr.height, 0, 0, ocr.width, ocr.height);
+  return ocr;
+}
+
+// OCR a full page or table region as sequential overlapping strips. Offsets
+// remain relative to the requested region so callers can merge table results
+// back into the full-page coordinate system used by green-check detection.
+async function recognizeCanvasRegion(colorCanvas, top, bottom, run, label = "") {
+  const mobile = window.matchMedia("(max-width: 620px)").matches;
+  const regionHeight = Math.max(1, bottom - top);
+  const tileHeight = mobile ? 1350 : 2100;
+  const overlap = mobile ? 180 : 140;
+  const starts = [];
+  if (regionHeight <= tileHeight) starts.push(0);
+  else {
+    for (let y = 0; y < regionHeight; y += tileHeight - overlap) {
+      starts.push(Math.min(y, Math.max(0, regionHeight - tileHeight)));
+      if (starts[starts.length - 1] + tileHeight >= regionHeight) break;
+    }
+  }
+  const scanned = [];
+  for (let index = 0; index < starts.length; index++) {
+    if (run !== scanRun) return { text: "", lines: [] };
+    const relativeTop = starts[index];
+    const relativeBottom = Math.min(regionHeight, relativeTop + tileHeight);
+    const strip = createOcrStrip(colorCanvas, top + relativeTop, top + relativeBottom);
+    const result = await window.Tesseract.recognize(strip, "ara+eng", {
+      logger: (m) => {
+        if (m.status !== "recognizing text" || run !== scanRun) return;
+        const progress = Math.round(((index + m.progress) / starts.length) * 100);
+        const prefix = label || (state.lang === "ar" ? "جاري القراءة" : "Reading");
+        elements.scanStatus.textContent = `${prefix}... ${progress}%`;
+      }
+    });
+    scanned.push({ data: result.data, offset: relativeTop });
+    strip.width = 1; strip.height = 1;
+  }
+  return mergeOcrData({ text: "", lines: [] }, scanned);
 }
 
 function detectScanMode(text) {
@@ -2264,38 +2386,36 @@ function detectScanMode(text) {
 // This works for uncropped, long mobile screenshots because each table gets a
 // clean, high-resolution OCR pass instead of competing with the whole page.
 function findTableBlocks(canvas) {
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const { width, height } = canvas;
-  const pixels = ctx.getImageData(0, 0, width, height).data;
+  const probeScale = Math.min(1, 520 / width);
+  const probe = document.createElement("canvas");
+  probe.width = Math.max(1, Math.round(width * probeScale));
+  probe.height = Math.max(1, Math.round(height * probeScale));
+  const ctx = probe.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(canvas, 0, 0, probe.width, probe.height);
+  const pixels = ctx.getImageData(0, 0, probe.width, probe.height).data;
   const bands = [];
   let start = -1;
-  for (let y = 0; y < height; y += 2) {
+  for (let y = 0; y < probe.height; y += 1) {
     let red = 0;
-    for (let x = Math.floor(width * .04); x < Math.floor(width * .96); x += 2) {
-      const i = (y * width + x) * 4;
+    for (let x = Math.floor(probe.width * .04); x < Math.floor(probe.width * .96); x += 1) {
+      const i = (y * probe.width + x) * 4;
       const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
       if (r > 115 && r > g * 1.55 && r > b * 1.55 && g < 125) red++;
     }
-    const wideRed = red > width * .075;
+    const wideRed = red > probe.width * .075;
     if (wideRed && start < 0) start = y;
     if (!wideRed && start >= 0) {
-      if (y - start >= 4) bands.push({ top: start, bottom: y });
+      if (y - start >= 2) bands.push({ top: start / probeScale, bottom: y / probeScale });
       start = -1;
     }
   }
-  if (start >= 0) bands.push({ top: start, bottom: height });
+  if (start >= 0) bands.push({ top: start / probeScale, bottom: height });
+  probe.width = 1; probe.height = 1;
   return bands.map((band, index) => ({
     top: Math.max(0, band.top - 22),
     bottom: index + 1 < bands.length ? Math.max(band.bottom + 30, bands[index + 1].top - 22) : height
   })).filter((block) => block.bottom - block.top >= 80).slice(0, 10);
-}
-
-function cropCanvas(canvas, top, bottom) {
-  const crop = document.createElement("canvas");
-  crop.width = canvas.width;
-  crop.height = Math.max(1, bottom - top);
-  crop.getContext("2d").drawImage(canvas, 0, top, canvas.width, crop.height, 0, 0, canvas.width, crop.height);
-  return crop;
 }
 
 function mergeOcrData(fullData, blocks) {
@@ -2311,7 +2431,7 @@ function mergeOcrData(fullData, blocks) {
   return { text: texts.join("\n"), lines };
 }
 
-async function parsePlanWithTableBlocks(fullData, ocrCanvas, colorCanvas, run) {
+async function parsePlanWithTableBlocks(fullData, colorCanvas, run) {
   const blocks = findTableBlocks(colorCanvas);
   if (!blocks.length) return parsePlan(fullData, colorCanvas);
   const scanned = [];
@@ -2319,8 +2439,14 @@ async function parsePlanWithTableBlocks(fullData, ocrCanvas, colorCanvas, run) {
     if (run !== scanRun) return { records: [], stats: { read: 0, expected: COURSES.length, passed: 0, unread: [] } };
     elements.scanStatus.textContent = `${state.lang === "ar" ? "\u062c\u0627\u0631\u064a \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u062c\u062f\u0648\u0644" : "Reading table"} ${index + 1}/${blocks.length}`;
     const block = blocks[index];
-    const result = await window.Tesseract.recognize(cropCanvas(ocrCanvas, block.top, block.bottom), "ara+eng");
-    scanned.push({ data: result.data, offset: block.top });
+    const data = await recognizeCanvasRegion(
+      colorCanvas,
+      block.top,
+      block.bottom,
+      run,
+      `${state.lang === "ar" ? "جاري قراءة الجدول" : "Reading table"} ${index + 1}/${blocks.length}`
+    );
+    scanned.push({ data, offset: block.top });
   }
   return parsePlan(mergeOcrData(fullData, scanned), colorCanvas);
 }
@@ -2430,17 +2556,23 @@ function findGreenCheckMarkers(ctx, imgWidth, imgHeight) {
   try {
     const startX = Math.floor(imgWidth * .7);
     const markerWidth = imgWidth - startX;
-    const pixels = ctx.getImageData(startX, 0, markerWidth, imgHeight).data;
+    const scale = Math.min(1, 320 / markerWidth, 7000 / imgHeight);
+    const probe = document.createElement("canvas");
+    probe.width = Math.max(1, Math.round(markerWidth * scale));
+    probe.height = Math.max(1, Math.round(imgHeight * scale));
+    const pctx = probe.getContext("2d", { willReadFrequently: true });
+    pctx.drawImage(ctx.canvas, startX, 0, markerWidth, imgHeight, 0, 0, probe.width, probe.height);
+    const pixels = pctx.getImageData(0, 0, probe.width, probe.height).data;
     const bands = [];
     let active = null;
-    for (let y = 0; y < imgHeight; y++) {
+    for (let y = 0; y < probe.height; y++) {
       let green = 0;
-      for (let x = 0; x < markerWidth; x++) {
-        const i = (y * markerWidth + x) * 4;
+      for (let x = 0; x < probe.width; x++) {
+        const i = (y * probe.width + x) * 4;
         const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
         if (g > 70 && g > r * 1.25 && g > b * 1.2) green++;
       }
-      if (green >= 3) {
+      if (green >= Math.max(1, Math.round(3 * scale))) {
         if (active) active.bottom = y;
         else active = { top: y, bottom: y };
       } else if (active) {
@@ -2448,8 +2580,10 @@ function findGreenCheckMarkers(ctx, imgWidth, imgHeight) {
       }
     }
     if (active) bands.push(active);
-    return bands.filter((band) => band.bottom - band.top >= 2 && band.bottom - band.top <= 80)
-      .map((band) => (band.top + band.bottom) / 2);
+    const markers = bands.filter((band) => band.bottom - band.top >= Math.max(1, 2 * scale) && band.bottom - band.top <= 80 * scale)
+      .map((band) => ((band.top + band.bottom) / 2) / scale);
+    probe.width = 1; probe.height = 1;
+    return markers;
   } catch { return []; }
 }
 
@@ -2478,11 +2612,14 @@ function hasGreenCheck(ctx, bbox, imgWidth, markers = []) {
 }
 
 function parsePlan(data, img) {
-  const canvas = document.createElement("canvas");
-  canvas.width = img.naturalWidth || img.width;
-  canvas.height = img.naturalHeight || img.height;
+  const isCanvas = img instanceof HTMLCanvasElement;
+  const canvas = isCanvas ? img : document.createElement("canvas");
+  if (!isCanvas) {
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+    canvas.getContext("2d", { willReadFrequently: true }).drawImage(img, 0, 0);
+  }
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0);
   const greenMarkers = findGreenCheckMarkers(ctx, canvas.width, canvas.height);
 
   const lines = (data.lines || []).map((ln) => ({

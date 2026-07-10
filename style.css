@@ -297,6 +297,7 @@ footer img { height: 32px; }
   background: var(--surface);
   box-shadow: var(--sh-1);
 }
+.side-stack { display: grid; gap: 14px; min-width: 0; }
 .side-head { margin-bottom: 12px; }
 .side-head.compact { margin-bottom: 10px; }
 .side-head.compact h3 { font-family: var(--font-body); font-weight: 800; color: var(--ink); }
@@ -552,17 +553,18 @@ select {
     linear-gradient(90deg, transparent 0 calc(100% - 1px), transparent),
     var(--surface);
 }
-.flow-arrows { position: absolute; inset: 22px; z-index: 1; pointer-events: none; overflow: visible; }
+.flow-arrows { position: absolute; inset: 22px; z-index: 2; pointer-events: none; overflow: visible; }
 
 .flowchart {
   position: relative;
-  z-index: 2;
+  z-index: auto;
   display: grid;
   grid-template-columns: repeat(var(--term-count, 8), 190px);
   gap: 72px;
   min-height: 640px;
   direction: ltr;
 }
+.term-title, .course-card, .credit-warn, .add-term-column, .add-summer-btn { z-index: 3; }
 .mobile-year, .mobile-year-terms { display: contents; }
 .mobile-year-label { display: none; }
 
@@ -612,7 +614,7 @@ select {
 }
 .credit-warn svg { flex: none; }
 
-/* small × to remove an empty future term (sits inside the header) */
+/* Small × to remove an eligible future term (sits inside the header). */
 .term-remove {
   position: absolute;
   top: 6px;
@@ -992,8 +994,8 @@ select {
   display: grid;
   grid-template-columns: 76px repeat(7, minmax(120px, 1fr));
   min-width: 900px;
-  gap: 1px;
-  background: var(--line);
+  gap: 2px;
+  background: var(--line-strong);
   direction: rtl;
 }
 .calendar-head {
@@ -1042,14 +1044,87 @@ footer {
 footer img { width: 108px; }
 
 /* ============ RESPONSIVE ============ */
+@media (min-width: 1081px) {
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+  .sidebar {
+    grid-template-columns: minmax(420px, 1.65fr) minmax(230px, .75fr) minmax(460px, 1.7fr);
+    align-items: start;
+  }
+  .sidebar .side-block { height: auto; }
+  .sidebar .side-stack { grid-template-rows: auto auto; align-content: start; }
+  .sidebar .side-stack .side-block { height: auto; }
+  .sidebar .side-stack .progress-block { padding: 10px; }
+  .sidebar .side-stack .progress-ring { width: 100px; height: 100px; }
+  .sidebar .side-stack .progress-ring-inner { width: 76px; height: 76px; }
+  .sidebar .side-stack .progress-ring-inner strong { font-size: 19px; }
+  .sidebar .side-stack .progress-ring-inner span { font-size: 9px; }
+  .sidebar .upload-zone { padding-block: 12px; }
+  .sidebar > .side-block:last-child { min-width: 0; }
+  .sidebar .completed-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    column-gap: 12px;
+    max-height: none;
+    overflow: visible;
+  }
+  .flow-main { grid-column: 1; }
+  .flowchart-wrap { padding: 18px; }
+  .flow-arrows { inset: 18px; }
+  .flowchart {
+    grid-template-columns: repeat(var(--term-count, 8), minmax(88px, 148px));
+    column-gap: 22px;
+    row-gap: 30px;
+    justify-content: center;
+    width: 100%;
+  }
+  .term-title { padding: 8px 5px; }
+  .term-title strong { font-size: 10.5px; }
+  .term-title span { font-size: 9px; }
+  .term-courses { gap: 30px; }
+  .course-card { min-height: 58px; padding: 6px 7px; }
+  .course-code { padding: 2px 6px; font-size: 9px; }
+  .course-credits { font-size: 9px; }
+  .course-card strong {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 10.5px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .course-group, .actual-term {
+    max-width: 100%;
+    overflow: hidden;
+    padding: 1px 5px;
+    font-size: 8.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .status-flag { inset-inline-start: 5px; top: 5px; width: 15px; height: 15px; }
+  .status-flag svg { width: 10px; height: 10px; }
+  .add-summer-btn {
+    left: -21px;
+    top: 7px;
+    width: 20px;
+    height: 20px;
+    border-width: 1px;
+    font-size: 12px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .sidebar .completed-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 @media (max-width: 1080px) {
   .app-shell { grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); }
   .sidebar { display: contents; }
   .sidebar .side-block:nth-child(1) { order: 1; }
-  .sidebar .side-block:nth-child(2) { order: 2; }
+  .sidebar .side-stack { display: contents; }
+  .sidebar .side-stack .progress-block { order: 2; }
   .flow-main { order: 3; grid-column: 1 / -1; }
-  .sidebar .side-block:nth-child(3) { order: 4; }
-  .sidebar .side-block:nth-child(4) { order: 5; }
+  .sidebar .side-stack > .side-block:last-child { order: 4; }
+  .sidebar > .side-block:last-child { order: 5; }
   .completed-list { max-height: none; }
   .flowchart { min-height: 0; }
 }
@@ -1066,34 +1141,52 @@ footer img { width: 108px; }
   .nav-button.is-unavailable { display: none; }
   .main-nav { gap: 14px; font-size: 14px; }
   .app-shell { grid-template-columns: 1fr; }
-  .sidebar .side-block { grid-column: 1; }
+  .sidebar .side-block, .sidebar .side-stack { grid-column: 1; }
   .flow-toolbar { flex-direction: column; align-items: stretch; }
   .toolbar-controls { justify-content: space-between; flex-wrap: wrap; }
   .map-scroll-controls { display: none; }
   .flowchart-wrap { overflow: hidden; padding: 10px 8px; }
   .flow-arrows { inset: 10px 8px; }
-  .flowchart { grid-template-columns: 1fr; gap: 18px; min-height: 0; }
-  .mobile-year { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: stretch; }
-  .mobile-year-label {
+  .flowchart { grid-template-columns: 1fr; gap: 30px; min-height: 0; }
+  .mobile-year, .mobile-year-terms { display: contents; }
+  .mobile-year-label { display: none; }
+  .term-column {
     display: grid;
-    place-items: center;
-    padding: 6px 4px;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--r-md);
-    background: var(--lane);
-    color: var(--ink-soft);
-    font-family: var(--font-body);
-    font-size: 8px;
-    font-weight: 800;
+    grid-template-columns: 46px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    gap: 8px;
+    padding: 0 16px 0 0;
+    border: 0;
+    background: transparent;
+  }
+  .term-title {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 100%;
+    padding: 10px 6px;
+    border-radius: 8px;
     writing-mode: vertical-rl;
     transform: rotate(180deg);
+    box-shadow: var(--sh-1);
   }
-  .mobile-year-terms { display: grid; gap: 18px; min-width: 0; }
-  .term-column { gap: 6px; padding: 7px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--lane); }
-  .term-title { position: relative; gap: 1px; padding: 5px 6px; border-radius: 5px; box-shadow: none; }
-  .term-title strong { font-size: 11.5px; }
-  .term-title span { font-size: 10px; }
-  .term-courses { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-height: 0; }
+  .term-title strong { font-size: 11.5px; line-height: 1.35; }
+  .term-title span { font-size: 10px; line-height: 1.3; }
+  .credit-warn { grid-column: 2; grid-row: 1; }
+  .term-courses {
+    grid-column: 2;
+    grid-row: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    min-height: 0;
+    padding: 8px;
+    border: 1px solid var(--line);
+    background: var(--lane);
+  }
   .course-card { gap: 4px; min-height: 68px; padding: 8px; border-width: 1px; border-radius: 7px; box-shadow: none; }
   .course-card:hover { transform: none; box-shadow: none; }
   .card-top { gap: 4px; }
@@ -1103,7 +1196,8 @@ footer img { width: 108px; }
   .course-group, .actual-term { padding: 2px 5px; font-size: 9px; }
   .status-flag { inset-inline-start: 7px; top: 7px; width: 15px; height: 15px; }
   .status-flag svg { width: 10px; height: 10px; }
-  .add-summer-btn { left: auto; right: 8px; top: 8px; width: 23px; height: 23px; border-width: 1px; font-size: 12px; }
+  .add-summer-btn { left: 11px; right: auto; top: 8px; z-index: 4; width: 23px; height: 23px; border-width: 1px; font-size: 12px; }
+  .term-remove { left: 50%; right: auto; top: 6px; transform: translateX(-50%) rotate(180deg); writing-mode: horizontal-tb; }
   .add-term-column { gap: 5px; min-height: 120px; border-width: 1px; border-radius: 7px; font-size: 7.8px; }
   .add-term-column .plus-circle { width: 26px; height: 26px; border-width: 1px; font-size: 16px; }
   .schedule-section { padding: 14px; margin-inline: 10px; }
