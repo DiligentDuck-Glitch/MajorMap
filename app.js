@@ -138,6 +138,7 @@ const I18N = {
     tabLocked: "مقفل",
     tabElective: "اختياري",
     statsTitle: "نتيجة قراءة الخطة",
+    transcriptStatsTitle: "نتيجة قراءة السجل الدراسي",
     statsRead: "مقررات تمت قراءتها",
     statsExpected: "إجمالي مقررات الخطة",
     statsPassed: "مقررات مجتازة",
@@ -154,6 +155,7 @@ const I18N = {
     invalidPlacement: "يجب أن يسبق المتطلب المقرر التابع له. لم يتم نقل المقرر.",
     pastNoTerm: "مقررات مجتازة",
     removeTerm: "حذف الفصل",
+    mobileArrowHint: "اضغط على أي مقرر لإظهار مسار متطلباته بوضوح",
     fallWord: "الفصل الأول",
     springWord: "الفصل الثاني",
     summerWord: "الفصل الصيفي",
@@ -226,6 +228,7 @@ const I18N = {
     tabLocked: "Locked",
     tabElective: "Elective",
     statsTitle: "Study-plan scan result",
+    transcriptStatsTitle: "Transcript scan result",
     statsRead: "Courses read",
     statsExpected: "Total plan courses",
     statsPassed: "Courses passed",
@@ -242,6 +245,7 @@ const I18N = {
     invalidPlacement: "A prerequisite must come before its dependent course. The course was not moved.",
     pastNoTerm: "Completed courses",
     removeTerm: "Remove term",
+    mobileArrowHint: "Tap a course to show its prerequisite path",
     fallWord: "Fall",
     springWord: "Spring",
     summerWord: "Summer",
@@ -1438,7 +1442,7 @@ function renderFlowchart() {
 
   // On phones each existing semester title becomes its own vertical rail, so
   // no separate year wrapper/header is needed.
-  elements.flowchart.innerHTML = renderedColumns.join("") + addCol;
+  elements.flowchart.innerHTML = `<p class="mobile-map-hint">${t("mobileArrowHint")}</p>` + renderedColumns.join("") + addCol;
 
   // interactions
   elements.flowchart.querySelectorAll(".course-card").forEach((btn) => {
@@ -1532,6 +1536,10 @@ function renderCourseCard(course, col, layout, eligibilitySemesterId) {
   const isComplete = state.completed.has(course.id);
   const isPlanned = state.sections.some((s) => s.courseId === course.id);
   const isSelected = state.selectedCourseId === course.id;
+  const selectedCourse = courseById.get(state.selectedCourseId);
+  const isRelatedPrereq = Boolean(selectedCourse && (selectedCourse.prereqs || []).includes(course.id));
+  const isRelatedDependent = Boolean(selectedCourse && (course.prereqs || []).includes(selectedCourse.id));
+  const isRelatedCoreq = Boolean(selectedCourse && ((selectedCourse.coreqs || []).includes(course.id) || (course.coreqs || []).includes(selectedCourse.id)));
   const unlocked = isUnlocked(course);
   const semesterEligibility = !isComplete
     ? eligibilityForSemester(course, layout, eligibilitySemesterId) : null;
@@ -1553,9 +1561,17 @@ function renderCourseCard(course, col, layout, eligibilitySemesterId) {
     !isComplete && !isPlanned && !course.elective && unlocked ? "is-available" : "",
     !isComplete && !isPlanned && !course.elective && !unlocked ? "is-locked" : "",
     eligibilityClass,
+    isRelatedPrereq ? "is-related-prereq" : "",
+    isRelatedDependent ? "is-related-dependent" : "",
+    isRelatedCoreq ? "is-related-coreq" : "",
     isSelected ? "is-selected" : ""
   ].filter(Boolean).join(" ");
   const title = electiveSel ? electiveSel.title : course.title;
+  const prerequisiteCodes = (course.prereqs || []).map((id) => formatCourseCode(courseById.get(id))).filter(Boolean);
+  const corequisiteCodes = (course.coreqs || []).map((id) => formatCourseCode(courseById.get(id))).filter(Boolean);
+  const mobileLinks = prerequisiteCodes.length || corequisiteCodes.length
+    ? `<span class="mobile-course-links" dir="ltr">${prerequisiteCodes.length ? `← ${prerequisiteCodes.join(" + ")}` : ""}${prerequisiteCodes.length && corequisiteCodes.length ? " · " : ""}${corequisiteCodes.length ? `↔ ${corequisiteCodes.join(" + ")}` : ""}</span>`
+    : "";
   const statusLabel = isComplete
     ? t("tabComplete")
     : isPlanned
@@ -1573,6 +1589,7 @@ function renderCourseCard(course, col, layout, eligibilitySemesterId) {
         <span class="course-credits">${course.credits} ${t("unit3")}</span>
       </span>
       <strong>${title}</strong>
+      ${mobileLinks}
       ${meta && meta.term
         ? `<span class="actual-term">${meta.grade ? meta.grade + " · " : ""}${meta.term}</span>`
         : `<span class="course-group">${course.group}</span>`}
@@ -1754,9 +1771,9 @@ function renderCompletedByTerm(done) {
     return acc;
   }, {});
   return Object.entries(groups).map(([term, courses]) => `
-    <div class="completed-term">
+    <div class="completed-term ${term === (state.lang === "ar" ? "بدون فصل" : "No term") ? "is-undated" : ""}">
       <h3>${term}</h3>
-      ${courses.map((course) => {
+      <div class="completed-term-courses">${courses.map((course) => {
         const meta = state.completedMeta[course.id] || {};
         const sel = course.elective ? getSelectedElective(course.id) : null;
         return `<div class="completed-pill">
@@ -1764,7 +1781,7 @@ function renderCompletedByTerm(done) {
           <strong>${meta.title || (sel && sel.title) || course.title}</strong>
           ${meta.grade ? `<small>${meta.grade}</small>` : ""}
         </div>`;
-      }).join("")}
+      }).join("")}</div>
     </div>`).join("");
 }
 
@@ -1775,7 +1792,7 @@ function renderScanStats() {
   if (!s) { elements.scanStats.hidden = true; elements.scanStats.innerHTML = ""; return; }
   elements.scanStats.hidden = false;
   elements.scanStats.innerHTML = `
-    <h3>${t("statsTitle")}</h3>
+    <h3>${t(state.scanMode === "transcript" ? "transcriptStatsTitle" : "statsTitle")}</h3>
     <div class="stat-row"><span>${t("statsRead")}</span><strong>${s.read} / ${s.expected}</strong></div>
     <div class="stat-row"><span>${t("statsPassed")}</span><strong>${s.passed}</strong></div>
     ${s.unread && s.unread.length ? `<div class="stat-unread"><span>${t("statsUnread")}:</span> ${s.unread.join("، ")}</div>` : ""}`;
@@ -1934,6 +1951,10 @@ function drawMobileArrows() {
   const fcRect = fc.getBoundingClientRect();
   const selected = state.selectedCourseId;
   const hasSel = Boolean(fc.querySelector(`[data-course-id="${selected}"]`));
+  if (!hasSel) {
+    elements.arrows.innerHTML = "";
+    return;
+  }
   const colors = arrowColors();
   const defs = `<defs>
     <marker id="arrow-prereq" markerWidth="9" markerHeight="9" refX="7.4" refY="4.5" orient="auto"><path d="M.5,1 L8.2,4.5 L.5,8 Z" fill="${colors.prereq}"></path></marker>
@@ -1946,11 +1967,12 @@ function drawMobileArrows() {
   const coreqSeen = new Set();
   let longLane = 0;
   const wrap = (d, coreq, related) => {
-    const lit = hasSel ? related : false;
+    if (!related) return null;
+    const lit = true;
     const color = coreq ? colors.coreq : colors.prereq;
-    const opacity = hasSel ? (lit ? 1 : .07) : .92;
-    const stroke = hasSel && lit ? 3.4 : 2.25;
-    const marker = !hasSel || lit ? ` marker-end="url(#arrow-${coreq ? "coreq" : "prereq"})"` : "";
+    const opacity = 1;
+    const stroke = 3.4;
+    const marker = ` marker-end="url(#arrow-${coreq ? "coreq" : "prereq"})"`;
     const dash = coreq ? ` stroke-dasharray="4 3"` : "";
     return { lit, svg:
       `<path d="${d}" fill="none" stroke="${colors.surface}" stroke-width="${stroke + 4.5}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>` +
@@ -1974,14 +1996,10 @@ function drawMobileArrows() {
       return wrap(`M ${x1} ${y} L ${x2} ${y}`, true, sourceId === selected || targetId === selected);
     }
     if (ty <= sy) return null;
-    let d;
-    if (tTerm - sTerm === 1) {
-      const mid = (sy + ty) / 2;
-      d = `M ${sx} ${sy} L ${sx} ${mid} L ${tx} ${mid} L ${tx} ${ty}`;
-    } else {
-      const side = w - 7 - (longLane++ % 3) * 5;
-      d = `M ${sx} ${sy} L ${side} ${sy} L ${side} ${ty} L ${tx} ${ty}`;
-    }
+    // Route every focused dependency through a slim outer rail. With only the
+    // selected course's path visible, these lines no longer cross other cards.
+    const side = w - 6 - (longLane++ % 4) * 5;
+    const d = `M ${sx} ${sy} L ${side} ${sy} L ${side} ${ty} L ${tx} ${ty}`;
     return wrap(d, coreq, sourceId === selected || targetId === selected);
   };
   COURSES.forEach((target) => {
@@ -2238,13 +2256,13 @@ async function scanPlanImage() {
     // it in overlapping strips. Mobile browsers are far more reliable when
     // Tesseract never has to hold a second full-page canvas in memory.
     const { color } = preprocessForOcr(img);
-    const data = await recognizeCanvasRegion(color, 0, color.height, run);
-    if (run !== scanRun) return; // user pressed Clear while OCR was running
-    const detectedMode = detectScanMode(data.text);
-    const mode = detectedMode || state.scanMode;
+    // The document type is chosen before upload. Read the actual table regions
+    // instead of repeatedly OCRing the full, very tall screenshot; this is both
+    // more accurate and considerably lighter on mobile browsers.
+    const mode = state.scanMode;
     const parsed = mode === "transcript"
-      ? parseTranscript(data)
-      : await parsePlanWithTableBlocks(data, color, run);
+      ? parseTranscript(await recognizeStructuredTables(color, run, "transcript"))
+      : await parsePlanWithTableBlocks(color, run);
     if (run !== scanRun) return;
     showScanReview(parsed, mode);
     elements.scanStatus.textContent = state.lang === "ar"
@@ -2343,7 +2361,7 @@ function createOcrStrip(colorCanvas, top, bottom) {
 // OCR a full page or table region as sequential overlapping strips. Offsets
 // remain relative to the requested region so callers can merge table results
 // back into the full-page coordinate system used by green-check detection.
-async function recognizeCanvasRegion(colorCanvas, top, bottom, run, label = "") {
+async function recognizeCanvasRegion(colorCanvas, top, bottom, run, label = "", ocrOptions = {}) {
   const mobile = window.matchMedia("(max-width: 620px)").matches;
   const regionHeight = Math.max(1, bottom - top);
   const tileHeight = mobile ? 1350 : 2100;
@@ -2363,6 +2381,7 @@ async function recognizeCanvasRegion(colorCanvas, top, bottom, run, label = "") 
     const relativeBottom = Math.min(regionHeight, relativeTop + tileHeight);
     const strip = createOcrStrip(colorCanvas, top + relativeTop, top + relativeBottom);
     const result = await window.Tesseract.recognize(strip, "ara+eng", {
+      ...ocrOptions,
       logger: (m) => {
         if (m.status !== "recognizing text" || run !== scanRun) return;
         const progress = Math.round(((index + m.progress) / starts.length) * 100);
@@ -2412,10 +2431,17 @@ function findTableBlocks(canvas) {
   }
   if (start >= 0) bands.push({ top: start / probeScale, bottom: height });
   probe.width = 1; probe.height = 1;
-  return bands.map((band, index) => ({
-    top: Math.max(0, band.top - 22),
-    bottom: index + 1 < bands.length ? Math.max(band.bottom + 30, bands[index + 1].top - 22) : height
-  })).filter((block) => block.bottom - block.top >= 80).slice(0, 10);
+  // A real burgundy table header is roughly 6–8% of the source width high.
+  // The old 2px cutoff also accepted bottom borders, splitting one table into
+  // several broken regions and dropping later tables after the 10-block cap.
+  const headers = bands.filter((band) => band.bottom - band.top >= width * .025);
+  const topPad = width * .14;
+  return headers.map((band, index) => ({
+    top: Math.max(0, Math.round(band.top - topPad)),
+    bottom: index + 1 < headers.length
+      ? Math.max(Math.round(band.bottom + 30), Math.round(headers[index + 1].top - topPad))
+      : height
+  })).filter((block) => block.bottom - block.top >= width * .12);
 }
 
 function mergeOcrData(fullData, blocks) {
@@ -2428,27 +2454,46 @@ function mergeOcrData(fullData, blocks) {
       lines.push({ ...line, bbox: { ...box, y0: (box.y0 || 0) + offset, y1: (box.y1 || 0) + offset } });
     });
   });
-  return { text: texts.join("\n"), lines };
+  // Overlapping OCR strips repeat boundary rows. Sort spatially and remove
+  // near-identical copies so transcript terms and course counts stay stable.
+  lines.sort((a, b) => ((a.bbox?.y0 || 0) - (b.bbox?.y0 || 0)) || ((a.bbox?.x0 || 0) - (b.bbox?.x0 || 0)));
+  const unique = [];
+  lines.forEach((line) => {
+    const norm = normalizeArabic(line.text || "");
+    if (!norm) return;
+    const center = ((line.bbox?.y0 || 0) + (line.bbox?.y1 || 0)) / 2;
+    const duplicate = unique.some((previous) => previous.norm === norm && Math.abs(previous.center - center) < 36);
+    if (!duplicate) unique.push({ line, norm, center });
+  });
+  return { text: texts.join("\n"), lines: unique.map((item) => item.line) };
 }
 
-async function parsePlanWithTableBlocks(fullData, colorCanvas, run) {
+async function recognizeStructuredTables(colorCanvas, run, mode) {
   const blocks = findTableBlocks(colorCanvas);
-  if (!blocks.length) return parsePlan(fullData, colorCanvas);
+  if (!blocks.length) return recognizeCanvasRegion(colorCanvas, 0, colorCanvas.height, run);
   const scanned = [];
   for (let index = 0; index < blocks.length; index++) {
-    if (run !== scanRun) return { records: [], stats: { read: 0, expected: COURSES.length, passed: 0, unread: [] } };
-    elements.scanStatus.textContent = `${state.lang === "ar" ? "\u062c\u0627\u0631\u064a \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u062c\u062f\u0648\u0644" : "Reading table"} ${index + 1}/${blocks.length}`;
+    if (run !== scanRun) return { text: "", lines: [] };
     const block = blocks[index];
     const data = await recognizeCanvasRegion(
       colorCanvas,
       block.top,
       block.bottom,
       run,
-      `${state.lang === "ar" ? "جاري قراءة الجدول" : "Reading table"} ${index + 1}/${blocks.length}`
+      `${state.lang === "ar" ? "جاري قراءة الجدول" : "Reading table"} ${index + 1}/${blocks.length}`,
+      { tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" }
     );
     scanned.push({ data, offset: block.top });
   }
-  return parsePlan(mergeOcrData(fullData, scanned), colorCanvas);
+  return mergeOcrData({ text: mode === "transcript" ? "السجل الدراسي" : "" , lines: [] }, scanned);
+}
+
+async function parsePlanWithTableBlocks(colorCanvas, run) {
+  // Keep OCR jobs sequential on phones; concurrent Tesseract workers are a
+  // common cause of incomplete scans and browser tab reloads.
+  const data = await recognizeStructuredTables(colorCanvas, run, "plan");
+  const passedRows = await recognizeMarkedPlanRows(colorCanvas, run);
+  return parsePlan(data, colorCanvas, passedRows);
 }
 
 // Normalize Arabic for fuzzy matching.
@@ -2499,16 +2544,40 @@ function titleCoverage(lineNorm, titleNorm) {
   return hit / toks.length + hit * 0.01;
 }
 
+function bigramSimilarity(a, b) {
+  const left = String(a).replace(/\s/g, ""), right = String(b).replace(/\s/g, "");
+  if (!left || !right) return 0;
+  if (left.includes(right) || right.includes(left)) return 1.1;
+  if (left.length < 2 || right.length < 2) return left === right ? 1 : 0;
+  const pairs = new Map();
+  for (let index = 0; index < left.length - 1; index++) {
+    const pair = left.slice(index, index + 2);
+    pairs.set(pair, (pairs.get(pair) || 0) + 1);
+  }
+  let common = 0;
+  for (let index = 0; index < right.length - 1; index++) {
+    const pair = right.slice(index, index + 2);
+    const count = pairs.get(pair) || 0;
+    if (count) { common++; pairs.set(pair, count - 1); }
+  }
+  return (2 * common) / (left.length + right.length - 2);
+}
+
+function titleScore(lineNorm, titleNorm) {
+  return Math.max(titleCoverage(lineNorm, titleNorm), bigramSimilarity(lineNorm, titleNorm));
+}
+
 // Detect a term-header line like "الفصل الأول 2023-2024".
 function detectTerm(line) {
   const norm = normalizeArabic(line);
-  if (!/الفصل/.test(norm)) return null;
   const years = norm.match(/(20\d{2})\s*[-\s]\s*(20\d{2})/);
+  if (!/الفصل/.test(norm) && !years) return null;
   const which = /الاول/.test(norm) ? "الأول"
     : /الثاني/.test(norm) ? "الثاني"
     : /الصيفي|صيف/.test(norm) ? "الصيفي" : "";
-  if (!which && !years) return null;
-  return `الفصل ${which}${years ? " " + years[1] + "-" + years[2] : ""}`.trim();
+  if (!which) return null;
+  const orderedYears = years ? [Number(years[1]), Number(years[2])].sort((a, b) => a - b) : [];
+  return `الفصل ${which}${orderedYears.length ? " " + orderedYears[0] + "-" + orderedYears[1] : ""}`.trim();
 }
 
 function extractGrade(line) {
@@ -2534,7 +2603,7 @@ function matchElectiveInLine(lineNorm, taken, hasGrade) {
     if (taken && taken.has(slotId)) return;
     opts.forEach((o) => {
       const tn = normalizeArabic(o.title);
-      const sc = titleCoverage(lineNorm, tn);
+      const sc = titleScore(lineNorm, tn);
       if (sc > bestScore) {
         if (bestTitleNorm && bestTitleNorm !== tn) secondScore = bestScore;
         bestScore = sc; best = { slotId, optionId: o.id, title: o.title }; bestTitleNorm = tn;
@@ -2580,11 +2649,64 @@ function findGreenCheckMarkers(ctx, imgWidth, imgHeight) {
       }
     }
     if (active) bands.push(active);
-    const markers = bands.filter((band) => band.bottom - band.top >= Math.max(1, 2 * scale) && band.bottom - band.top <= 80 * scale)
+    // The circular check icon has small white gaps, which previously split one
+    // icon into two or three markers. Merge nearby green bands before mapping
+    // them to course rows.
+    const merged = [];
+    bands.forEach((band) => {
+      const previous = merged[merged.length - 1];
+      if (previous && band.top - previous.bottom <= 14) previous.bottom = band.bottom;
+      else merged.push({ ...band });
+    });
+    const markers = merged.filter((band) => band.bottom - band.top >= Math.max(1, 2 * scale) && band.bottom - band.top <= 80 * scale)
       .map((band) => ((band.top + band.bottom) / 2) / scale);
     probe.width = 1; probe.height = 1;
     return markers;
   } catch { return []; }
+}
+
+// Build a compact sheet containing only green-checked plan rows and OCR it at
+// full resolution. Every row on this sheet is known to be completed, so even a
+// partial Arabic title can be matched without depending on a huge-page bbox.
+async function recognizeMarkedPlanRows(colorCanvas, run) {
+  const ctx = colorCanvas.getContext("2d", { willReadFrequently: true });
+  const markers = findGreenCheckMarkers(ctx, colorCanvas.width, colorCanvas.height);
+  if (!markers.length) return [];
+  const halfHeight = Math.max(36, Math.round(colorCanvas.width * .038));
+  const gap = Math.max(12, Math.round(colorCanvas.width * .012));
+  const cellHeight = halfHeight * 2 + gap;
+  const sheet = document.createElement("canvas");
+  sheet.width = colorCanvas.width;
+  sheet.height = cellHeight * markers.length;
+  const sheetCtx = sheet.getContext("2d");
+  sheetCtx.fillStyle = "#fff";
+  sheetCtx.fillRect(0, 0, sheet.width, sheet.height);
+  markers.forEach((center, index) => {
+    const sourceTop = Math.max(0, Math.round(center - halfHeight));
+    const sourceBottom = Math.min(colorCanvas.height, Math.round(center + halfHeight));
+    sheetCtx.drawImage(
+      colorCanvas,
+      0, sourceTop, colorCanvas.width, sourceBottom - sourceTop,
+      0, index * cellHeight + Math.round(gap / 2), colorCanvas.width, sourceBottom - sourceTop
+    );
+  });
+  const data = await recognizeCanvasRegion(
+    sheet, 0, sheet.height, run,
+    state.lang === "ar" ? "جاري قراءة المقررات المجتازة" : "Reading completed courses",
+    { tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" }
+  );
+  const grouped = Array.from({ length: markers.length }, () => []);
+  (data.lines || []).forEach((line) => {
+    const center = ((line.bbox?.y0 || 0) + (line.bbox?.y1 || 0)) / 2;
+    const index = Math.max(0, Math.min(markers.length - 1, Math.floor(center / cellHeight)));
+    grouped[index].push(line.text || "");
+  });
+  sheet.width = 1; sheet.height = 1;
+  return grouped.map((parts, index) => ({
+    raw: parts.join(" "),
+    norm: normalizeArabic(parts.join(" ")),
+    bbox: { x0: 0, x1: colorCanvas.width, y0: markers[index] - halfHeight, y1: markers[index] + halfHeight }
+  })).filter((row) => row.norm.length >= 3);
 }
 
 // Detect the green check mark within/near a text line's bounding box.
@@ -2611,7 +2733,7 @@ function hasGreenCheck(ctx, bbox, imgWidth, markers = []) {
   } catch { return false; }
 }
 
-function parsePlan(data, img) {
+function parsePlan(data, img, passedRows = []) {
   const isCanvas = img instanceof HTMLCanvasElement;
   const canvas = isCanvas ? img : document.createElement("canvas");
   if (!isCanvas) {
@@ -2635,30 +2757,34 @@ function parsePlan(data, img) {
   const reqTargets = COURSES.filter((c2) => !c2.elective).map((c2) => ({
     key: c2.id, num: c2.num, dept2: c2.subj.slice(2), titles: c2.aliases.map(normalizeArabic)
   }));
-  const elecTargets = [];
+  const elecById = new Map();
   Object.entries(ELECTIVE_OPTIONS).forEach(([slot, opts]) => {
-    opts.forEach((o) => elecTargets.push({
-      key: `${slot}::${o.id}`, num: o.num, dept2: o.subj.slice(2), titles: [normalizeArabic(o.title)]
-    }));
+    opts.forEach((o) => {
+      if (!elecById.has(o.id)) elecById.set(o.id, {
+        key: `OPT::${o.id}`, num: o.num, dept2: o.subj.slice(2), titles: [normalizeArabic(o.title)]
+      });
+    });
   });
+  const elecTargets = [...elecById.values()];
   const targets = [...reqTargets, ...elecTargets];
 
   const matched = new Map(); // key -> {passed}
-  lines.forEach((line) => {
+  const considerLine = (line, forcedPassed = false) => {
     if (line.norm.replace(/\s/g, "").length < 3) return;
     const grade = extractGrade(line.raw);            // grade column => passed
-    let best = null, bestScore = 0;
+    let best = null, bestScore = 0, secondScore = 0;
     // Dominance is judged among REQUIRED titles only: a half-destroyed
     // required row (e.g. "الخطي" from الجبر الخطى) can tie an elective title
     // (البرمجه الخطيه) on the shared token, and required must win that tie.
     let bestReq = null, reqScore = 0, reqSecond = 0;
     targets.forEach((tgt) => {
       let sc = 0;
-      tgt.titles.forEach((tn) => { const v = titleCoverage(line.norm, tn); if (v > sc) sc = v; });
+      tgt.titles.forEach((tn) => { const v = titleScore(line.norm, tn); if (v > sc) sc = v; });
       // number + department code present on the row => definitive match
       if (hasTok(line.norm, tgt.num) && hasTok(line.norm, tgt.dept2)) sc = Math.max(sc, 1.2);
-      if (sc > bestScore) { bestScore = sc; best = tgt.key; }
-      if (!tgt.key.includes("::")) {
+      if (sc > bestScore) { secondScore = bestScore; bestScore = sc; best = tgt.key; }
+      else if (sc > secondScore) secondScore = sc;
+      if (!tgt.key.startsWith("OPT::")) {
         if (sc > reqScore) { reqSecond = reqScore; reqScore = sc; bestReq = tgt.key; }
         else if (sc > reqSecond) { reqSecond = sc; }
       }
@@ -2666,14 +2792,18 @@ function parsePlan(data, img) {
     // A grade letter proves this is a course row, so tolerate weaker Arabic
     // OCR there (same trick as parseTranscript).
     let hit = null;
-    if (best && bestScore >= (grade ? 0.6 : 0.72)) hit = best;
+    const directThreshold = forcedPassed ? 0.52 : (grade ? 0.6 : 0.72);
+    if (best && bestScore >= directThreshold && (!forcedPassed || bestScore - secondScore >= .06 || bestScore >= .8)) hit = best;
     else if (grade && bestReq && dominates(reqScore, reqSecond)) hit = bestReq;
+    else if (forcedPassed && bestReq && reqScore >= .42 && reqScore - reqSecond >= .12) hit = bestReq;
     if (hit) {
-      const passed = Boolean(grade) || hasGreenCheck(ctx, line.bbox, canvas.width, greenMarkers);
+      const passed = forcedPassed || Boolean(grade) || hasGreenCheck(ctx, line.bbox, canvas.width, greenMarkers);
       const prev = matched.get(hit);
       if (!prev || (!prev.passed && passed)) matched.set(hit, { passed, grade });
     }
-  });
+  };
+  lines.forEach((line) => considerLine(line));
+  passedRows.forEach((line) => considerLine(line, true));
 
   // Whole-text fallback if line segmentation was poor.
   if ([...matched.keys()].filter((k) => !k.includes("::")).length < 5) {
@@ -2687,16 +2817,11 @@ function parsePlan(data, img) {
   const usedSlots = new Set();
   matched.forEach((info, key) => {
     if (!info.passed) return;
-    if (key.includes("::")) {
-      let [slot, optId] = key.split("::");
-      if (usedSlots.has(slot)) {
-        // twin slots (EL-GEN-1/2, EL-MAJ-1/2) share one options list — spill
-        // a second passed elective into the next free slot offering it
-        const alt = Object.keys(ELECTIVE_OPTIONS).find((s2) =>
-          !usedSlots.has(s2) && ELECTIVE_OPTIONS[s2].some((o) => o.id === optId));
-        if (!alt) return;
-        slot = alt;
-      }
+    if (key.startsWith("OPT::")) {
+      const optId = key.slice(5);
+      const slot = Object.keys(ELECTIVE_OPTIONS).find((s2) =>
+        !usedSlots.has(s2) && ELECTIVE_OPTIONS[s2].some((o) => o.id === optId));
+      if (!slot) return;
       usedSlots.add(slot);
       records.push({ courseId: slot, term: "", grade: info.grade || "", electiveChoiceId: optId });
     } else {
@@ -2704,13 +2829,15 @@ function parsePlan(data, img) {
     }
   });
 
-  const readIds = new Set();
-  matched.forEach((_v, key) => readIds.add(key.includes("::") ? key.split("::")[0] : key));
-  const unread = COURSES.filter((c2) => !c2.elective && !readIds.has(c2.id)).map((c2) => c2.title);
+  const requiredReadIds = new Set([...matched.keys()].filter((key) => !key.startsWith("OPT::")));
+  const optionReadCount = [...matched.keys()].filter((key) => key.startsWith("OPT::")).length;
+  const electiveSlotsRead = optionReadCount ? Math.min(COURSES.filter((course) => course.elective).length, optionReadCount) : 0;
+  const read = Math.min(COURSES.length, requiredReadIds.size + electiveSlotsRead);
+  const unread = COURSES.filter((c2) => !c2.elective && !requiredReadIds.has(c2.id)).map((c2) => c2.title);
 
   return {
     records,
-    stats: { read: readIds.size, expected: COURSES.length, passed: records.length, unread: unread.slice(0, 12) }
+    stats: { read, expected: COURSES.length, passed: records.length, unread: unread.slice(0, 12) }
   };
 }
 
@@ -2732,7 +2859,7 @@ function parseTranscript(data) {
     let best = null, score = 0, second = 0;
     reqTargets.forEach(({ id, titles }) => {
       if (exclude.has(id)) return;
-      let s = 0; titles.forEach((tn) => { const v = titleCoverage(norm, tn); if (v > s) s = v; });
+      let s = 0; titles.forEach((tn) => { const v = titleScore(norm, tn); if (v > s) s = v; });
       if (s > score) { second = score; score = s; best = id; }
       else if (s > second) { second = s; }
     });
@@ -2744,9 +2871,9 @@ function parseTranscript(data) {
   // and a clearly-dominant partial match is accepted (OCR often destroys one
   // word of a two-word title, e.g. الجبر الخطى).
   const matchRow = (norm, grade) => {
-    const minReq = grade ? 0.6 : 0.72;
+    const minReq = grade ? 0.55 : 0.64;
     const { best, score, second } = bestRequired(norm, taken);
-    const reqOk = best && (score >= minReq || (grade && dominates(score, second)));
+    const reqOk = best && (score >= minReq || (grade && score >= .42 && score - second >= .12));
     const elec = matchElectiveInLine(norm, taken, Boolean(grade));
     // Strong electives (>=0.8) outrank moderate required matches, but a
     // dominance-level elective must actually beat the required score —
@@ -2767,13 +2894,18 @@ function parseTranscript(data) {
     let grade = extractGrade(line.raw);
 
     let hit = matchRow(line.norm, grade);
-    // OCR sometimes splits one table row into two lines — retry merged with the
-    // next non-header line before giving up on this row.
-    if (!hit && lines[i + 1] && !detectTerm(lines[i + 1].raw) && !SKIP.test(lines[i + 1].norm)) {
-      const mergedNorm = `${line.norm} ${lines[i + 1].norm}`.trim();
-      const mergedGrade = grade || extractGrade(lines[i + 1].raw);
+    // Table OCR can split the grade and Arabic title into neighboring lines.
+    // Try small spatial windows on both sides without consuming the next row;
+    // the `taken` set safely removes any overlap duplicates.
+    const neighbors = [];
+    if (lines[i - 1] && !detectTerm(lines[i - 1].raw) && !SKIP.test(lines[i - 1].norm)) neighbors.push(lines[i - 1]);
+    if (lines[i + 1] && !detectTerm(lines[i + 1].raw) && !SKIP.test(lines[i + 1].norm)) neighbors.push(lines[i + 1]);
+    for (const neighbor of neighbors) {
+      if (hit) break;
+      const mergedNorm = `${line.norm} ${neighbor.norm}`.trim();
+      const mergedGrade = grade || extractGrade(neighbor.raw);
       hit = matchRow(mergedNorm, mergedGrade);
-      if (hit) { grade = mergedGrade; i++; }
+      if (hit) grade = mergedGrade;
     }
 
     if (hit && !taken.has(hit.courseId)) {

@@ -439,6 +439,7 @@ footer img { height: 32px; }
 /* ---- Completed list ---- */
 .completed-list { display: grid; gap: 12px; max-height: 320px; overflow: auto; }
 .completed-term { display: grid; gap: 6px; }
+.completed-term-courses { display: grid; gap: 6px; min-width: 0; }
 .completed-term h3 {
   margin: 2px 0;
   padding-bottom: 5px;
@@ -567,6 +568,7 @@ select {
 .term-title, .course-card, .credit-warn, .add-term-column, .add-summer-btn { z-index: 3; }
 .mobile-year, .mobile-year-terms { display: contents; }
 .mobile-year-label { display: none; }
+.mobile-map-hint, .mobile-course-links { display: none; }
 
 /* flex so .term-courses always stretches to the column bottom — the whole
    empty area below the cards is a valid drop target */
@@ -1067,6 +1069,11 @@ footer img { width: 108px; }
     max-height: none;
     overflow: visible;
   }
+  .sidebar .completed-term.is-undated { grid-column: 1 / -1; }
+  .sidebar .completed-term.is-undated .completed-term-courses {
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    column-gap: 10px;
+  }
   .flow-main { grid-column: 1; }
   .flowchart-wrap { padding: 18px; }
   .flow-arrows { inset: 18px; }
@@ -1148,14 +1155,26 @@ footer img { width: 108px; }
   .flowchart-wrap { overflow: hidden; padding: 10px 8px; }
   .flow-arrows { inset: 10px 8px; }
   .flowchart { grid-template-columns: 1fr; gap: 30px; min-height: 0; }
+  .mobile-map-hint {
+    display: block;
+    margin: 0 4px -18px;
+    padding: 7px 10px;
+    border: 1px solid var(--primary);
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 9px;
+    font-weight: 800;
+    text-align: center;
+  }
   .mobile-year, .mobile-year-terms { display: contents; }
   .mobile-year-label { display: none; }
   .term-column {
     display: grid;
-    grid-template-columns: 46px minmax(0, 1fr);
+    grid-template-columns: 40px minmax(0, 1fr);
     grid-template-rows: auto 1fr;
-    gap: 8px;
-    padding: 0 16px 0 0;
+    gap: 6px;
+    padding: 0 10px 0 0;
     border: 0;
     background: transparent;
   }
@@ -1174,28 +1193,41 @@ footer img { width: 108px; }
     transform: rotate(180deg);
     box-shadow: var(--sh-1);
   }
-  .term-title strong { font-size: 11.5px; line-height: 1.35; }
-  .term-title span { font-size: 10px; line-height: 1.3; }
+  .term-title strong { font-size: 10px; line-height: 1.3; }
+  .term-title span { font-size: 8.5px; line-height: 1.2; }
   .credit-warn { grid-column: 2; grid-row: 1; }
   .term-courses {
     grid-column: 2;
     grid-row: 2;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
     min-height: 0;
-    padding: 8px;
+    padding: 6px;
     border: 1px solid var(--line);
     background: var(--lane);
   }
-  .course-card { gap: 4px; min-height: 68px; padding: 8px; border-width: 1px; border-radius: 7px; box-shadow: none; }
+  .course-card { gap: 3px; min-height: 58px; padding: 5px; border-width: 1px; border-radius: 6px; box-shadow: none; }
   .course-card:hover { transform: none; box-shadow: none; }
-  .card-top { gap: 4px; }
-  .course-code { padding: 2px 6px; font-size: 9.5px; }
-  .course-credits { font-size: 9.5px; }
-  .course-card strong { font-size: 11px; line-height: 1.35; }
-  .course-group, .actual-term { padding: 2px 5px; font-size: 9px; }
-  .status-flag { inset-inline-start: 7px; top: 7px; width: 15px; height: 15px; }
-  .status-flag svg { width: 10px; height: 10px; }
+  .card-top { gap: 2px; }
+  .course-code { padding: 1px 4px; font-size: 7.5px; }
+  .course-credits { font-size: 7px; }
+  .course-card strong { font-size: 8.5px; line-height: 1.25; }
+  .course-group, .actual-term { padding: 1px 3px; font-size: 7px; }
+  .mobile-course-links {
+    display: block;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 6.5px;
+    font-weight: 800;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .course-card.is-related-prereq { border: 2px solid var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+  .course-card.is-related-dependent { border: 2px solid var(--secondary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 18%, transparent); }
+  .course-card.is-related-coreq { border: 2px dashed var(--accent); }
+  .status-flag { inset-inline-start: 4px; top: 4px; width: 11px; height: 11px; }
+  .status-flag svg { width: 8px; height: 8px; }
   .add-summer-btn { left: 11px; right: auto; top: 8px; z-index: 4; width: 23px; height: 23px; border-width: 1px; font-size: 12px; }
   .term-remove { left: 50%; right: auto; top: 6px; transform: translateX(-50%) rotate(180deg); writing-mode: horizontal-tb; }
   .add-term-column { gap: 5px; min-height: 120px; border-width: 1px; border-radius: 7px; font-size: 7.8px; }
