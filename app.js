@@ -1063,13 +1063,14 @@ function computeLayout() {
 
   // ---- past columns from the transcript ----
   const pastMap = new Map(); // key -> {label, sort, courses}
+  const undatedCompleted = [];
   COURSES.filter((c2) => state.completed.has(c2.id)).forEach((c2) => {
     const meta = state.completedMeta[c2.id] || {};
     const parsed = parseTermName(meta.term);
-    // A study-plan scan knows completion but not the semester in which the
-    // course was taken. Keep those courses in their official map positions
-    // below instead of making one enormous, un-routable "past" column.
-    if (!parsed) return;
+    // Study plans prove completion but omit the historical semester. Keep
+    // those cards at the left in compact curriculum-order groups so the right
+    // side can focus entirely on the future schedule.
+    if (!parsed) { undatedCompleted.push(c2); return; }
     const key = `p${parsed.y}-${parsed.season}`;
     if (!pastMap.has(key)) {
       pastMap.set(key, {
@@ -1082,18 +1083,27 @@ function computeLayout() {
     }
     pastMap.get(key).courses.push(c2);
   });
-  const past = [...pastMap.values()].sort((a, b) => a.sort - b.sort);
-  const lastParsedPast = [...past].reverse().find((p) => p.parsed);
+  const datedPast = [...pastMap.values()].sort((a, b) => a.sort - b.sort);
+  const undatedPast = TERM_COLUMNS.map((_term, termIndex) =>
+    undatedCompleted.filter((course) => course.term === termIndex))
+    .filter((courses) => courses.length)
+    .map((courses, groupIndex) => ({
+      id: `undated-past-${groupIndex}`,
+      label: `${t("pastNoTerm")} ${groupIndex + 1}`,
+      sort: 1e8 + groupIndex,
+      summer: false,
+      parsed: null,
+      courses
+    }));
+  const past = [...datedPast, ...undatedPast];
+  const lastParsedPast = [...datedPast].reverse().find((p) => p.parsed);
 
   const remaining = COURSES.filter((c2) => !state.completed.has(c2.id));
 
   // ---- canonical mode: untouched default plan ----
   if (!state.futureSems && past.length === 0 && !Object.keys(state.placements).length) {
     const columns = TERM_COLUMNS.map((col, i) => {
-      // With no dated transcript terms (the study-plan case), completed cards
-      // remain in their official term beside future cards. This preserves the
-      // flowchart geometry and prevents a single tall completed-course column.
-      const courses = COURSES.filter((c2) => c2.term === i);
+      const courses = remaining.filter((c2) => c2.term === i);
       return {
         id: `f${i + 1}`, kind: "regular", canonicalIndex: i, season: i % 2,
         title: col[lang], future: true, courses,
@@ -1102,8 +1112,7 @@ function computeLayout() {
     });
     const compacted = optimizeTermAssignments(columns, {
       creditLimit: (column) => WARN_CAP[column.kind === "summer" ? "summer" : "regular"],
-      maxAdvance: 2,
-      lockedIds: state.completed
+      maxAdvance: 2
     });
     return { columns: optimizeColumnOrder(compacted), canonical: true };
   }
