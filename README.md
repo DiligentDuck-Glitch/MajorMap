@@ -15,11 +15,23 @@ prerequisites, plan future semesters, and visualize the path to graduation.
   courses are available (green) or still blocked by prerequisites (red).
 - Weekly schedule workspace for selected sections.
 
-## Current limitation
+## Section offerings (manual snapshot)
 
-Banner section availability is temporarily disabled while the Banner integration
-is unavailable and being prepared for a verified cached-data workflow. The map,
-planning, and transcript features remain usable without it.
+Boys-section availability comes from `sections_cache.json`, a static snapshot
+scanned department-by-department from PAAET Banner ahead of time — there is
+no live Banner call at runtime, so the site stays a plain static page. Girls
+sections are filtered out during the scan.
+
+To refresh it for a new term:
+
+```powershell
+python scan_department.py 202610   # term code from TERMS in app.js
+```
+
+This makes ~20 requests (one per department subject code) instead of one per
+course, and writes `sections_cache.json` plus a console report of which
+catalog courses have no sections that term. Commit the updated JSON and
+redeploy.
 
 ## Privacy
 

@@ -2,14 +2,17 @@
    MajorMap — PAAET Computer-Teacher (معلم الحاسب) planner
    Course identities (subject/number/name/department) are taken from
    PAAET Banner + the eadvisor الخطة الدراسية page (source of truth).
-   Live section offerings come from the local backend proxy (server.py):
-     GET /api/sections?term=&subj=&crse=   (boys-only)
+   Section offerings are a manually-refreshed static snapshot fetched from
+   sections_cache.json (boys-only), built by scan_department.py. No live
+   Banner call happens at runtime.
    ============================================================ */
 
 const TOTAL_CREDITS = 134;
-// GitHub Pages is static. Keep Banner-dependent controls disabled until the
-// cached sections workflow has been implemented and verified against Banner.
-const OFFERINGS_ENABLED = false;
+// Section offerings are a manually-refreshed static snapshot (sections_cache.json),
+// scanned department-by-department from Banner ahead of time — no live pull at
+// runtime. Re-run `python scan_department.py <term>` and redeploy to refresh.
+const OFFERINGS_ENABLED = true;
+const SECTIONS_CACHE_URL = "sections_cache.json";
 
 // Term codes for the "next term" selector (Banner term_in values).
 const TERMS = {
@@ -42,7 +45,7 @@ const DAYS = [
   { id: "fri", ar: "الجمعة", en: "Fri" }
 ];
 
-const HOURS = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+const HOURS = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
 
 // Department (القسم) names by Banner subject code.
 // Verified against the eadvisor بيانات المقرر panel (القسم العلمي) per course.
@@ -80,7 +83,7 @@ const I18N = {
     summer: "فصل صيفي",
     navMap: "الخريطة",
     navSchedule: "الجدول الأسبوعي",
-    openBanner: "فتح بانر",
+    openBanner: "بيانات الشعب محدّثة يدويًا",
     creditUnit: "وحدة",
     transcriptEyebrow: "قراءة السجل الأكاديمي",
     transcriptTitle: "المقررات المجتازة",
@@ -119,10 +122,13 @@ const I18N = {
     department: "القسم العلمي",
     markComplete: "تحديد كمجتاز",
     unmarkComplete: "إلغاء الاجتياز",
-    refreshBanner: "تحديث الشعب من بانر",
-    loadingSections: "جاري تحميل الشعب من بانر...",
-    noOfferings: "لا توجد شعب بنين متاحة لهذا المقرر في هذا الفصل.",
-    bannerError: "تعذر الاتصال ببانر. تأكد من تشغيل الخادم (python server.py).",
+    loadingSections: "جاري تحميل الشعب المحفوظة...",
+    noOfferings: "لا توجد شعب بنين لهذا المقرر في هذا الفصل (حسب آخر تحديث).",
+    noDataTerm: "لم يتم رصد بيانات الشعب لهذا الفصل بعد.",
+    sectionConflict: (code, title, days, time) =>
+      `تعارض في الوقت: هذه الشعبة تتداخل مع ${code} ${title} (${days}، ${time}). لم تتم الإضافة.`,
+    lockedOfferings: (list) => `لا يمكن تسجيل هذا المقرر: لم تُكمل المتطلب السابق (${list}) بعد.`,
+    bannerError: "تعذر تحميل ملف بيانات الشعب (sections_cache.json).",
     section: "شعبة",
     crn: "الرقم المرجعي",
     time: "الوقت",
@@ -170,7 +176,7 @@ const I18N = {
     summer: "Summer term",
     navMap: "Flowchart",
     navSchedule: "Weekly schedule",
-    openBanner: "Banner unavailable",
+    openBanner: "Sections manually updated",
     creditUnit: "cr",
     transcriptEyebrow: "Read academic record",
     transcriptTitle: "Completed courses",
@@ -209,10 +215,13 @@ const I18N = {
     department: "Department",
     markComplete: "Mark completed",
     unmarkComplete: "Unmark",
-    refreshBanner: "Refresh sections from Banner",
-    loadingSections: "Loading sections from Banner...",
-    noOfferings: "No boys sections available for this course this term.",
-    bannerError: "Could not reach Banner. Make sure the server is running (python server.py).",
+    loadingSections: "Loading saved sections...",
+    noOfferings: "No boys sections for this course this term (per last update).",
+    noDataTerm: "Section data hasn't been scanned for this term yet.",
+    sectionConflict: (code, title, days, time) =>
+      `Time conflict: this section overlaps ${code} ${title} (${days}, ${time}). Not added.`,
+    lockedOfferings: (list) => `Can't register: prerequisite not completed yet (${list}).`,
+    bannerError: "Could not load section data (sections_cache.json).",
     section: "Section",
     crn: "CRN",
     time: "Time",
@@ -266,7 +275,7 @@ const I18N = {
 // Kept as escapes so the source remains safe in editors configured with a
 // legacy Windows code page.
 Object.assign(I18N.ar, {
-  openBanner: "\u0628\u064a\u0627\u0646\u0627\u062a \u0628\u0627\u0646\u0631 \u063a\u064a\u0631 \u0645\u062a\u0627\u062d\u0629",
+  openBanner: "\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0634\u0639\u0628 \u0645\u062d\u062f\u0651\u062b\u0629 \u064a\u062f\u0648\u064a\u064b\u0627",
   semesterEligibility: "\u0625\u0638\u0647\u0627\u0631 \u0627\u0644\u0645\u0642\u0631\u0631\u0627\u062a \u0627\u0644\u0645\u062a\u0627\u062d\u0629 \u0641\u064a \u0647\u0630\u0627 \u0627\u0644\u0641\u0635\u0644",
   courseEligible: "\u0645\u062a\u0627\u062d \u0641\u064a \u0647\u0630\u0627 \u0627\u0644\u0641\u0635\u0644",
   courseIneligible: "\u0627\u0644\u0645\u062a\u0637\u0644\u0628\u0627\u062a \u0627\u0644\u0633\u0627\u0628\u0642\u0629 \u063a\u064a\u0631 \u0645\u0643\u062a\u0645\u0644\u0629",
@@ -443,6 +452,7 @@ const newSemId = () => `f${++semIdCounter}`;
 const courseById = new Map(COURSES.map((course) => [course.id, course]));
 const offeringsCache = {};   // key `${term}:${subj}:${crse}` -> array
 const elements = {};
+let sectionsStaticPromise = null;   // resolves the parsed sections_cache.json once
 
 document.addEventListener("DOMContentLoaded", () => {
   cacheElements();
@@ -636,8 +646,22 @@ function restoreState() {
     if (saved.theme === "dark" || saved.theme === "light") state.theme = saved.theme;
     if (saved.scanStats) state.scanStats = saved.scanStats;
     if (saved.scanMode === "plan" || saved.scanMode === "transcript") state.scanMode = saved.scanMode;
-    if (sanitizePinnedPlacements()) saveState();
+    let dirty = sanitizePinnedPlacements();
+    if (sanitizeSections()) dirty = true;
+    if (dirty) saveState();
   } catch { /* ignore */ }
+}
+
+// Drop any scheduled section whose course's prerequisites aren't (or are no
+// longer) satisfied — e.g. the student later unmarked a prerequisite as
+// completed, or the section was added before this check existed.
+function sanitizeSections() {
+  const before = state.sections.length;
+  state.sections = state.sections.filter((it) => {
+    const course = courseById.get(it.courseId);
+    return course && !missingPrereqs(course).length;
+  });
+  return state.sections.length !== before;
 }
 
 function saveState() {
@@ -706,6 +730,10 @@ function showPlannerNotice(message = "") {
 
 function isUnlocked(course) {
   return (course.prereqs || []).every((id) => state.completed.has(id));
+}
+
+function missingPrereqs(course) {
+  return (course.prereqs || []).filter((id) => !state.completed.has(id));
 }
 
 // Snapshot eligibility at the start of a future semester. Courses in earlier
@@ -1603,13 +1631,21 @@ function getSelectedElective(id) {
   return opts.find((o) => o.id === selId) || opts[0] || null;
 }
 
-// ---------- live offerings (Banner proxy) ----------
+// ---------- offerings (static sections_cache.json, manually refreshed) ----------
 function offeringTarget(course) {
   if (course.elective) {
     const sel = getSelectedElective(course.id);
     return sel ? { subj: sel.subj, crse: sel.num } : null;
   }
   return { subj: course.subj, crse: course.num };
+}
+
+function loadSectionsStatic() {
+  if (!sectionsStaticPromise) {
+    sectionsStaticPromise = fetch(SECTIONS_CACHE_URL)
+      .then((res) => { if (!res.ok) throw new Error(`http ${res.status}`); return res.json(); });
+  }
+  return sectionsStaticPromise;
 }
 
 async function fetchOfferings(course) {
@@ -1620,11 +1656,13 @@ async function fetchOfferings(course) {
   const key = `${term}:${target.subj}:${target.crse}`;
   if (offeringsCache[key]) return offeringsCache[key];
   try {
-    const res = await fetch(`/api/sections?term=${term}&subj=${target.subj}&crse=${target.crse}`);
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || "banner");
-    const sections = (data.sections || []).map((s) => normalizeSection(s, course.id));
-    const result = { status: "ok", sections };
+    const data = await loadSectionsStatic();
+    if (data.term !== term || !data.cache[key]) {
+      return { status: "no-data", sections: [] };
+    }
+    const entry = data.cache[key];
+    const sections = (entry.sections || []).map((s) => normalizeSection(s, course.id));
+    const result = { status: entry.status === "ok" ? "ok" : "error", sections, error: entry.error };
     offeringsCache[key] = result;
     return result;
   } catch (err) {
@@ -1674,17 +1712,11 @@ async function renderDetail() {
     <div class="detail-block"><label>${t("opens")}</label><p>${opens.length ? opens.map((it) => formatCourseShort(it.id)).join("، ") : t("noDirectOpen")}</p></div>
     <div class="detail-actions">
       <button type="button" id="toggle-complete">${state.completed.has(course.id) ? t("unmarkComplete") : t("markComplete")}</button>
-      ${OFFERINGS_ENABLED ? `<button type="button" class="secondary-button" id="banner-refresh">${t("refreshBanner")}</button>` : ""}
     </div>
     <div class="offering-list" id="offering-list"><div class="detail-empty">${t("loadingSections")}</div></div>
     ${state.bannerMessage ? `<p class="banner-note">${state.bannerMessage}</p>` : ""}`;
 
   document.querySelector("#toggle-complete").addEventListener("click", () => toggleCompleted(course.id));
-  document.querySelector("#banner-refresh")?.addEventListener("click", () => {
-    const target = offeringTarget(course);
-    if (target) delete offeringsCache[`${elements.termSelect.value}:${target.subj}:${target.crse}`];
-    renderOfferings(course);
-  });
   const sel = document.querySelector("#elective-choice");
   if (sel) {
     sel.addEventListener("change", () => {
@@ -1725,13 +1757,35 @@ async function renderOfferings(course) {
     container.innerHTML = `<div class="detail-empty">${t("bannerError")}</div>`;
     return;
   }
+  if (result.status === "no-data") {
+    container.innerHTML = `<div class="detail-empty">${t("noDataTerm")}</div>`;
+    return;
+  }
   if (!result.sections.length) {
     container.innerHTML = `<div class="detail-empty">${t("noOfferings")}</div>`;
     return;
   }
   container.innerHTML = result.sections.map((o, i) => renderOffering(o, i)).join("");
   container.querySelectorAll("[data-add-section]").forEach((btn) => {
-    btn.addEventListener("click", () => addSection(result.sections[Number(btn.dataset.addSection)]));
+    btn.addEventListener("click", () => {
+      const offering = result.sections[Number(btn.dataset.addSection)];
+      const outcome = addSection(offering);
+      container.querySelector(".offering-conflict")?.remove();
+      if (!outcome.ok && outcome.conflict) {
+        const c = outcome.conflict;
+        const conflictCourse = courseById.get(c.courseId);
+        const title = conflictCourse && conflictCourse.elective ? (getSelectedElective(conflictCourse.id) || {}).title : (conflictCourse && conflictCourse.title);
+        const warning = document.createElement("p");
+        warning.className = "banner-note offering-conflict";
+        warning.textContent = t("sectionConflict", formatCourseCode(conflictCourse), title || "", formatDays(c.days), c.time);
+        container.prepend(warning);
+      } else if (!outcome.ok && outcome.missing) {
+        const warning = document.createElement("p");
+        warning.className = "banner-note offering-conflict";
+        warning.textContent = t("lockedOfferings", outcome.missing.map(formatCourseShort).join("، "));
+        container.prepend(warning);
+      }
+    });
   });
 }
 
@@ -1839,7 +1893,7 @@ function renderCalendar() {
         .map((it) => {
           const course = courseById.get(it.courseId);
           const title = course && course.elective ? (getSelectedElective(course.id) || {}).title : (course && course.title);
-          return `<div class="class-block">${formatCourseCode(course)}<span>${title || ""}</span><span>${it.time}</span><span>${it.room}</span></div>`;
+          return `<div class="class-block">${formatCourseCode(course)}<span>${title || ""}</span><span dir="ltr">${it.time}</span><span>${it.room}</span></div>`;
         }).join("");
       return `<div class="calendar-cell">${blocks}</div>`;
     }).join("");
@@ -1848,14 +1902,39 @@ function renderCalendar() {
   elements.calendar.innerHTML = header + rows;
 }
 
+function toMinutes(hhmm) {
+  const [h, m] = String(hhmm || "").split(":").map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+}
+
+function findScheduleConflict(offering) {
+  const days = offering.days || [];
+  const start = toMinutes(offering.start);
+  const end = toMinutes(offering.end);
+  if (!days.length || start === null || end === null) return null;
+  return state.sections.find((it) => {
+    if (!(it.days || []).some((d) => days.includes(d))) return false;
+    const oStart = toMinutes(it.start);
+    const oEnd = toMinutes(it.end);
+    if (oStart === null || oEnd === null) return false;
+    return start < oEnd && oStart < end;
+  }) || null;
+}
+
 function addSection(offering) {
-  if (!offering) return;
-  if (state.sections.some((it) => it.courseId === offering.courseId && it.crn === offering.crn)) return;
+  if (!offering) return { ok: false };
+  if (state.sections.some((it) => it.courseId === offering.courseId && it.crn === offering.crn)) return { ok: false };
+  const course = courseById.get(offering.courseId);
+  const missing = course ? missingPrereqs(course) : [];
+  if (missing.length) return { ok: false, missing };
+  const conflict = findScheduleConflict(offering);
+  if (conflict) return { ok: false, conflict };
   state.sections.push({ ...offering });
   saveState();
   renderFlowchart();
   renderSchedule();
   requestAnimationFrame(drawArrows);
+  return { ok: true };
 }
 
 // ---------- arrows ----------
@@ -2169,6 +2248,7 @@ function toggleCompleted(id) {
     state.completed.add(id);
     state.completedMeta[id] = state.completedMeta[id] || { term: state.lang === "ar" ? "محدد يدويًا" : "Manual", grade: "" };
   }
+  sanitizeSections();
   saveState();
   renderAll();
 }
@@ -2191,6 +2271,7 @@ function applyTranscriptRecords(records, stats) {
   if (!stats) elements.scanStatus.textContent = state.lang === "ar"
     ? "تم تطبيق السجل التجريبي (24 مقررًا، 72 وحدة)."
     : "Sample record applied (24 courses, 72 credits).";
+  sanitizeSections();
   saveState();
   renderAll();
 }
